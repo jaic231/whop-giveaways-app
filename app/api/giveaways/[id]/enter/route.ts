@@ -34,6 +34,14 @@ export async function POST(
       );
     }
 
+    // Prevent creators from entering their own giveaways
+    if (giveaway.creatorId === userId) {
+      return NextResponse.json(
+        { error: "Creators cannot enter their own giveaways" },
+        { status: 403 }
+      );
+    }
+
     const entry = await enterGiveaway(id, userId, userName);
 
     return NextResponse.json({ entry });

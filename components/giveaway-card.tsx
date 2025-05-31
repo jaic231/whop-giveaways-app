@@ -31,7 +31,8 @@ export function GiveawayCard({
     if (!isGiveawayActive(giveaway)) return;
 
     const interval = setInterval(() => {
-      const remaining = giveaway.endDate.getTime() - new Date().getTime();
+      const endDate = new Date(giveaway.endDate);
+      const remaining = endDate.getTime() - new Date().getTime();
       setTimeRemaining(remaining > 0 ? remaining : null);
     }, 1000);
 
@@ -103,6 +104,7 @@ export function GiveawayCard({
   const isActive = isGiveawayActive(giveaway);
   const isUpcoming = isGiveawayUpcoming(giveaway);
   const isCompleted = isGiveawayCompleted(giveaway);
+  const isCreator = giveaway.creatorId === currentUserId;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-6">
@@ -156,7 +158,7 @@ export function GiveawayCard({
         </div>
 
         <div>
-          {isActive && timeRemaining ? (
+          {isActive && timeRemaining && timeRemaining > 0 ? (
             <div>
               <div className="text-lg font-semibold text-orange-600">
                 {formatTimeRemaining(timeRemaining)}
@@ -170,12 +172,19 @@ export function GiveawayCard({
               </div>
               <div className="text-sm text-gray-500">Starts</div>
             </div>
-          ) : (
+          ) : isCompleted ? (
             <div>
               <div className="text-lg font-semibold text-gray-600">
                 {new Date(giveaway.endDate).toLocaleDateString()}
               </div>
               <div className="text-sm text-gray-500">Ended</div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-lg font-semibold text-gray-600">
+                {new Date(giveaway.endDate).toLocaleDateString()}
+              </div>
+              <div className="text-sm text-gray-500">Ends</div>
             </div>
           )}
         </div>
@@ -188,7 +197,11 @@ export function GiveawayCard({
 
       {/* Action Button */}
       <div className="w-full">
-        {isActive && !giveaway.hasUserEntered ? (
+        {isCreator && isActive ? (
+          <div className="w-full bg-blue-50 border border-blue-200 text-blue-800 py-2 px-4 rounded-md text-center font-medium">
+            Your Giveaway
+          </div>
+        ) : isActive && !giveaway.hasUserEntered ? (
           <button
             onClick={handleEnter}
             disabled={entering}

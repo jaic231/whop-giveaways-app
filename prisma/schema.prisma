@@ -25,6 +25,10 @@ model Giveaway {
   creatorId   String // Whop user ID of the creator
   creatorName String? // Optional cached creator name
 
+  // Deposit information (giveaway only created after successful deposit)
+  depositChargeId String // Whop charge ID for the deposit (required)
+  payoutId        String? // Whop payout ID when winner is paid
+
   // Metadata
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

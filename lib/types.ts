@@ -23,16 +23,16 @@ export interface CreateGiveawayData {
 // Utility functions
 export const isGiveawayActive = (giveaway: Giveaway): boolean => {
   const now = new Date();
-  return (
-    giveaway.status === "ACTIVE" &&
-    giveaway.startDate <= now &&
-    giveaway.endDate > now
-  );
+  const startDate = new Date(giveaway.startDate);
+  const endDate = new Date(giveaway.endDate);
+
+  return giveaway.status === "ACTIVE" && startDate <= now && endDate > now;
 };
 
 export const isGiveawayUpcoming = (giveaway: Giveaway): boolean => {
   const now = new Date();
-  return giveaway.status === "UPCOMING" && giveaway.startDate > now;
+  const startDate = new Date(giveaway.startDate);
+  return giveaway.status === "UPCOMING" && startDate > now;
 };
 
 export const isGiveawayCompleted = (giveaway: Giveaway): boolean => {

@@ -5,18 +5,22 @@ import { CreateGiveawayForm } from "./create-giveaway-form";
 import { GiveawaysList } from "./giveaways-list";
 import type { GiveawayWithStats } from "@/lib/types";
 
-export function GiveawaysApp() {
+interface CurrentUser {
+  id: string;
+  name: string | null;
+  username: string;
+  isAdmin: boolean;
+}
+
+interface GiveawaysAppProps {
+  currentUser: CurrentUser;
+}
+
+export function GiveawaysApp({ currentUser }: GiveawaysAppProps) {
   const [view, setView] = useState<"list" | "create">("list");
   const [giveaways, setGiveaways] = useState<GiveawayWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // Mock user info - in real app this would come from Whop SDK
-  const currentUser = {
-    id: "user_123",
-    name: "John Doe",
-    isCreator: true, // For now, assume all users can create giveaways
-  };
 
   const fetchGiveaways = async () => {
     try {
@@ -58,9 +62,12 @@ export function GiveawaysApp() {
               <p className="text-gray-600 mt-1">
                 Create and manage prize competitions
               </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Welcome, {currentUser.name || currentUser.username} (Admin)
+              </p>
             </div>
 
-            {currentUser.isCreator && view === "list" && (
+            {currentUser.isAdmin && view === "list" && (
               <button
                 onClick={() => setView("create")}
                 className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -84,7 +91,7 @@ export function GiveawaysApp() {
         {view === "create" ? (
           <CreateGiveawayForm
             creatorId={currentUser.id}
-            creatorName={currentUser.name}
+            creatorName={currentUser.name || currentUser.username}
             onSuccess={handleGiveawayCreated}
             onCancel={() => setView("list")}
           />

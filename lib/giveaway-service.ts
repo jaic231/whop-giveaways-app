@@ -10,13 +10,18 @@ import { getTimeRemaining } from "./types";
 export async function createGiveaway(
   data: CreateGiveawayData,
   creatorId: string,
+  depositChargeId: string,
   creatorName?: string
 ) {
   return await prisma.giveaway.create({
     data: {
-      ...data,
+      title: data.title,
+      prizeAmount: data.prizeAmount,
+      startDate: data.startDate,
+      endDate: data.endDate,
       creatorId,
       creatorName,
+      depositChargeId: depositChargeId,
     },
     include: {
       entries: true,

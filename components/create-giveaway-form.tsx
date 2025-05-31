@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { CreateGiveawayData } from "@/lib/types";
 
 interface CreateGiveawayFormProps {
@@ -25,9 +25,21 @@ export function CreateGiveawayForm({
   });
   const [prizeAmountDisplay, setPrizeAmountDisplay] = useState(""); // Separate state for display
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [showDepositInfo, setShowDepositInfo] = useState(false);
 
   // Mock Whop balance - in real app this would come from Whop API
   const whopBalance = 15000; // $150.00 in cents
+
+  // Memoize form validation to prevent infinite re-renders
+  const isFormValid = useMemo(() => {
+    if (!formData.title.trim()) return false;
+    if (formData.prizeAmount <= 0) return false;
+    if (formData.prizeAmount > whopBalance) return false;
+    if (formData.startDate >= formData.endDate) return false;
+    if (formData.startDate < new Date()) return false;
+    return true;
+  }, [formData, whopBalance]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -61,38 +73,58 @@ export function CreateGiveawayForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setLoading(true);
+    setError(null);
+
     try {
-      const response = await fetch("/api/giveaways", {
+      // Create deposit charge first
+      const depositResponse = await fetch("/api/giveaways/deposit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          ...formData,
-          creatorId,
-          creatorName,
+          userId: creatorId,
+          amount: formData.prizeAmount,
+          giveawayTitle: formData.title,
+          experienceId: window.location.pathname.split("/")[2], // Extract from URL
         }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to create giveaway");
+      if (!depositResponse.ok) {
+        const error = await depositResponse.json();
+        throw new Error(error.error || "Failed to create deposit charge");
       }
 
-      onSuccess();
+      const { checkoutUrl, chargeId } = await depositResponse.json();
+
+      if (!checkoutUrl) {
+        throw new Error("No checkout URL received");
+      }
+
+      // Store giveaway data in localStorage to create after payment
+      localStorage.setItem(
+        "pendingGiveaway",
+        JSON.stringify({
+          title: formData.title,
+          prizeAmount: formData.prizeAmount,
+          startDate: formData.startDate.toISOString(),
+          endDate: formData.endDate.toISOString(),
+          creatorId,
+          creatorName,
+          depositChargeId: chargeId,
+        })
+      );
+
+      // Redirect to Whop checkout
+      window.location.href = checkoutUrl;
     } catch (error) {
       console.error("Failed to create giveaway:", error);
-      setErrors({
-        submit:
-          error instanceof Error
-            ? error.message
-            : "Failed to create giveaway. Please try again.",
-      });
+      setError(
+        error instanceof Error ? error.message : "Failed to create giveaway"
+      );
     } finally {
       setLoading(false);
     }
@@ -260,30 +292,62 @@ export function CreateGiveawayForm({
           </div>
 
           {/* Submit Error */}
-          {errors.submit && (
+          {error && (
             <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-red-600 text-sm">{errors.submit}</p>
+              <p className="text-red-600 text-sm">{error}</p>
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-            >
-              {loading ? "Creating..." : "Create Giveaway"}
-            </button>
+          <div className="flex gap-4">
             <button
               type="button"
               onClick={onCancel}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-medium"
+              disabled={loading}
+              className="flex-1 bg-gray-300 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-400 transition-colors font-medium disabled:opacity-50"
             >
               Cancel
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDepositInfo(!showDepositInfo)}
+              className="px-4 py-3 text-blue-600 hover:text-blue-700 font-medium"
+              title="Learn about deposits"
+            >
+              ℹ️
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading || !isFormValid}
+              className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading
+                ? "Processing..."
+                : `Create & Pay Deposit ($${(
+                    formData.prizeAmount / 100
+                  ).toFixed(2)})`}
+            </button>
           </div>
         </form>
+
+        {/* Deposit Info */}
+        {showDepositInfo && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="font-medium text-blue-900 mb-2">About Deposits</h4>
+            <p className="text-sm text-blue-800 mb-2">
+              To ensure fair giveaways, you must deposit the full prize amount
+              when creating a giveaway.
+            </p>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Your deposit is held securely by Whop</li>
+              <li>• Prize money is automatically paid to the winner</li>
+              <li>• If no one enters, your deposit is refunded</li>
+              <li>• You cannot enter your own giveaway</li>
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

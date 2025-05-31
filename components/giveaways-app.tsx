@@ -1,0 +1,102 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { CreateGiveawayForm } from "./create-giveaway-form";
+import { GiveawaysList } from "./giveaways-list";
+import type { GiveawayWithStats } from "@/lib/types";
+
+export function GiveawaysApp() {
+  const [view, setView] = useState<"list" | "create">("list");
+  const [giveaways, setGiveaways] = useState<GiveawayWithStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Mock user info - in real app this would come from Whop SDK
+  const currentUser = {
+    id: "user_123",
+    name: "John Doe",
+    isCreator: true, // For now, assume all users can create giveaways
+  };
+
+  const fetchGiveaways = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/giveaways?userId=${currentUser.id}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch giveaways");
+      }
+      const data = await response.json();
+      setGiveaways(data.giveaways);
+    } catch (error) {
+      console.error("Failed to fetch giveaways:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGiveaways();
+  }, [refreshKey]);
+
+  const handleGiveawayCreated = () => {
+    setView("list");
+    setRefreshKey((prev) => prev + 1); // Trigger refresh
+  };
+
+  const handleRefresh = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Giveaways</h1>
+              <p className="text-gray-600 mt-1">
+                Create and manage prize competitions
+              </p>
+            </div>
+
+            {currentUser.isCreator && view === "list" && (
+              <button
+                onClick={() => setView("create")}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Create Giveaway
+              </button>
+            )}
+
+            {view === "create" && (
+              <button
+                onClick={() => setView("list")}
+                className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors font-medium"
+              >
+                Back to List
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Content */}
+        {view === "create" ? (
+          <CreateGiveawayForm
+            creatorId={currentUser.id}
+            creatorName={currentUser.name}
+            onSuccess={handleGiveawayCreated}
+            onCancel={() => setView("list")}
+          />
+        ) : (
+          <GiveawaysList
+            giveaways={giveaways}
+            currentUserId={currentUser.id}
+            loading={loading}
+            onRefresh={handleRefresh}
+          />
+        )}
+      </div>
+    </div>
+  );
+}

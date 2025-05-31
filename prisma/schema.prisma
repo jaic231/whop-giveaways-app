@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Giveaway {
+  id          String         @id @default(cuid())
+  title       String
+  prizeAmount Int // Prize amount in cents (e.g., $10.00 = 1000)
+  startDate   DateTime
+  endDate     DateTime
+  status      GiveawayStatus @default(UPCOMING)
+
+  // Creator information
+  creatorId   String // Whop user ID of the creator
+  creatorName String? // Optional cached creator name
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  entries Entry[]
+
+  @@map("giveaways")
+}
+
+model Entry {
+  id         String   @id @default(cuid())
+  userId     String // Whop user ID of the participant
+  userName   String? // Optional cached user name
+  giveawayId String
+  enteredAt  DateTime @default(now())
+
+  // Winner tracking
+  isWinner Boolean @default(false)
+
+  // Relations
+  giveaway Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  // Ensure one entry per user per giveaway
+  @@unique([userId, giveawayId])
+  @@map("entries")
+}
+
+enum GiveawayStatus {
+  UPCOMING // Not started yet
+  ACTIVE // Currently running
+  COMPLETED // Finished, winner selected
+  CANCELLED // Cancelled by creator
+}

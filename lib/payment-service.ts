@@ -71,20 +71,26 @@ export async function payoutToWinner(
     if (!ledgerResult.company?.ledgerAccount?.id) {
       throw new Error("Company ledger account not found");
     }
+    // Generate unique idempotency key
+    const idempotenceKey = `giveaway_payout_${crypto.randomUUID()}`;
 
-    const result = await whopApi.payUser({
+    const result = await whopApi.transferFunds({
       input: {
         amount: amountInCents,
         currency: "usd",
         destinationId: userId,
         ledgerAccountId: ledgerResult.company.ledgerAccount.id,
-        transferFee: ledgerResult.company.ledgerAccount.transferFee,
+        transferFee: ledgerResult.company.ledgerAccount.transferFee || 0,
+        idempotenceKey: idempotenceKey,
+        notes: `Giveaway winnings for "${giveawayTitle}" - $${(
+          amountInCents / 100
+        ).toFixed(2)}`,
       },
     });
 
     return {
       success: true,
-      payoutId: result.payUser?.id,
+      payoutId: result.transferFunds ? idempotenceKey : undefined,
     };
   } catch (error) {
     console.error("Failed to payout to winner:", error);
@@ -98,10 +104,16 @@ export async function payoutToWinner(
 /**
  * Get user's ledger balance to check if they can afford the deposit
  */
-export async function getUserBalance(userId: string): Promise<number> {
+export async function getUserBalance(): Promise<number> {
   try {
     const result = await whopApi.getUserLedgerAccount();
-    return result.viewer.user?.ledgerAccount?.balance || 0;
+    const balanceCaches =
+      result.viewer.user?.ledgerAccount?.balanceCaches?.nodes || [];
+    const totalBalance = balanceCaches.reduce(
+      (sum, cache) => sum + (cache?.balance || 0),
+      0
+    );
+    return totalBalance;
   } catch (error) {
     console.error("Failed to get user balance:", error);
     return 0;

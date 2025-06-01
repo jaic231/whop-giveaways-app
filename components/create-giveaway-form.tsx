@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { CreateGiveawayData } from "@/lib/types";
+import { DateTimePicker } from "./date-time-picker";
+import { getUserBalance } from "@/lib/payment-service";
 
 interface CreateGiveawayFormProps {
   creatorId: string;
@@ -28,8 +30,30 @@ export function CreateGiveawayForm({
   const [error, setError] = useState<string | null>(null);
   const [showDepositInfo, setShowDepositInfo] = useState(false);
 
-  // Mock Whop balance - in real app this would come from Whop API
-  const whopBalance = 15000; // $150.00 in cents
+  // User balance state
+  const [whopBalance, setWhopBalance] = useState<number>(0);
+  const [balanceLoading, setBalanceLoading] = useState(true);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  // Fetch user balance on component mount
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        setBalanceLoading(true);
+        setBalanceError(null);
+        const balance = await getUserBalance();
+        setWhopBalance(balance);
+      } catch (error) {
+        console.error("Failed to fetch user balance:", error);
+        setBalanceError("Failed to load balance");
+        setWhopBalance(0); // Fallback to 0
+      } finally {
+        setBalanceLoading(false);
+      }
+    };
+
+    fetchBalance();
+  }, []);
 
   // Memoize form validation to prevent infinite re-renders
   const isFormValid = useMemo(() => {
@@ -167,31 +191,6 @@ export function CreateGiveawayForm({
     }
   };
 
-  const formatDateForInput = (date: Date): string => {
-    // Check if date is valid (keep this for safety)
-    if (!date || isNaN(date.getTime())) {
-      return "";
-    }
-
-    // Format date in local timezone for datetime-local input
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
-
-  const handleDateChange = (field: "startDate" | "endDate", value: string) => {
-    // Datepicker always provides valid dates, so we can simplify this
-    const newDate = new Date(value);
-    setFormData((prev) => ({
-      ...prev,
-      [field]: newDate,
-    }));
-  };
-
   return (
     <div className="max-w-2xl mx-auto">
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -215,7 +214,7 @@ export function CreateGiveawayForm({
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, title: e.target.value }))
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
               placeholder="Enter giveaway name..."
             />
             {errors.title && (
@@ -241,55 +240,52 @@ export function CreateGiveawayForm({
                 value={prizeAmountDisplay}
                 onChange={(e) => handlePrizeAmountChange(e.target.value)}
                 onBlur={handlePrizeAmountBlur}
-                className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
                 placeholder="0.00"
+                disabled={balanceLoading}
               />
             </div>
-            <p className="text-sm text-gray-500 mt-1">
-              Available balance: ${(whopBalance / 100).toFixed(2)}
-            </p>
+            {balanceLoading ? (
+              <p className="text-sm text-gray-500 mt-1">Loading balance...</p>
+            ) : balanceError ? (
+              <p className="text-sm text-red-500 mt-1">{balanceError}</p>
+            ) : (
+              <p className="text-sm text-gray-500 mt-1">
+                Available balance: ${(whopBalance / 100).toFixed(2)}
+              </p>
+            )}
             {errors.prizeAmount && (
               <p className="text-red-600 text-sm mt-1">{errors.prizeAmount}</p>
             )}
           </div>
 
           {/* Start Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Start Date & Time *
-            </label>
-            <input
-              type="datetime-local"
-              id="startDate"
-              value={formatDateForInput(formData.startDate)}
-              onChange={(e) => handleDateChange("startDate", e.target.value)}
-              onKeyDown={(e) => e.preventDefault()}
-              onFocus={(e) => e.target.showPicker?.()}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
-            />
-            {errors.startDate && (
-              <p className="text-red-600 text-sm mt-1">{errors.startDate}</p>
-            )}
-          </div>
+          <DateTimePicker
+            id="startDate"
+            name="startDate"
+            value={formData.startDate}
+            onChange={(date) =>
+              setFormData((prev) => ({ ...prev, startDate: date }))
+            }
+            label="Start Date & Time *"
+            error={errors.startDate}
+            minDate={new Date()}
+            placeholderText="Select when the giveaway starts..."
+          />
 
           {/* End Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              End Date & Time *
-            </label>
-            <input
-              type="datetime-local"
-              id="endDate"
-              value={formatDateForInput(formData.endDate)}
-              onChange={(e) => handleDateChange("endDate", e.target.value)}
-              onKeyDown={(e) => e.preventDefault()}
-              onFocus={(e) => e.target.showPicker?.()}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
-            />
-            {errors.endDate && (
-              <p className="text-red-600 text-sm mt-1">{errors.endDate}</p>
-            )}
-          </div>
+          <DateTimePicker
+            id="endDate"
+            name="endDate"
+            value={formData.endDate}
+            onChange={(date) =>
+              setFormData((prev) => ({ ...prev, endDate: date }))
+            }
+            label="End Date & Time *"
+            error={errors.endDate}
+            minDate={formData.startDate}
+            placeholderText="Select when the giveaway ends..."
+          />
 
           {/* Submit Error */}
           {error && (
@@ -320,7 +316,7 @@ export function CreateGiveawayForm({
 
             <button
               type="submit"
-              disabled={loading || !isFormValid}
+              disabled={loading || !isFormValid || balanceLoading}
               className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading

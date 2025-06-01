@@ -13,12 +13,14 @@
   },
   "dependencies": {
     "@prisma/client": "^6.8.2",
+    "@types/react-datepicker": "^7.0.0",
     "@vercel/functions": "^2.0.3",
     "@whop-apps/sdk": "0.0.1-canary.111",
     "@whop/api": "^0.0.21-canary.4",
     "next": "15.3.2",
     "prisma": "^6.8.2",
     "react": "^19.0.0",
+    "react-datepicker": "^8.4.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {

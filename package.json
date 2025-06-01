@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "whop-proxy --command 'next dev --turbopack'",
-    "build": "next build",
+    "build": "prisma generate --no-engine && next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "prisma generate",
     "prisma:db:push": "dotenv -e .env.local -- pnpm prisma db push",
     "prisma:generate": "dotenv -e .env.local -- pnpm prisma generate",
     "prisma:migrate:dev": "dotenv -e .env.local -- pnpm prisma migrate dev"

@@ -21,11 +21,20 @@ interface GiveawayFormErrors {
 interface CreateGiveawayFormProps {
   experienceId: string;
   companyId: string;
+  currentUser: {
+    id: string;
+    name: string | null;
+    username: string;
+    isAdmin: boolean;
+  };
+  onSuccess?: () => void; // Callback for successful giveaway creation
 }
 
 export function CreateGiveawayForm({
   experienceId,
   companyId,
+  currentUser,
+  onSuccess,
 }: CreateGiveawayFormProps) {
   const [formData, setFormData] = useState<GiveawayFormData>({
     title: "",
@@ -75,17 +84,13 @@ export function CreateGiveawayForm({
       newErrors.prizeAmount = "Prize amount must be positive";
     }
 
-    // Check if company has sufficient balance
-    if (companyBalance !== null && formData.prizeAmount > companyBalance) {
-      newErrors.prizeAmount = "Prize amount exceeds company balance";
-    }
+    // // Check if company has sufficient balance
+    // if (companyBalance !== null && formData.prizeAmount > companyBalance) {
+    //   newErrors.prizeAmount = "Prize amount exceeds company balance";
+    // }
 
     if (formData.startDate >= formData.endDate) {
       newErrors.endDate = "End date must be after start date";
-    }
-
-    if (formData.startDate < new Date()) {
-      newErrors.startDate = "Start date cannot be in the past";
     }
 
     setErrors(newErrors);
@@ -101,19 +106,31 @@ export function CreateGiveawayForm({
 
     try {
       const giveawayData = {
-        ...formData,
+        title: formData.title,
+        prizeAmount: formData.prizeAmount,
         startDate: formData.startDate.toISOString(),
         endDate: formData.endDate.toISOString(),
-        experienceId,
+        creatorId: currentUser.id,
         companyId,
+        creatorName: currentUser.name || "Temp User",
       };
 
-      // Store in localStorage for the payment success page
-      localStorage.setItem("pendingGiveaway", JSON.stringify(giveawayData));
+      const response = await fetch("/api/giveaways", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(giveawayData),
+      });
 
-      // For now, just redirect to a success page or show success message
-      // TODO: Implement payment flow when needed
-      alert("Giveaway created successfully!");
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to create giveaway");
+      }
+
+      // Success! Show success message and reset form
+      alert(`${result.message}! Giveaway ID: ${result.giveaway.id}`);
 
       // Reset form
       setFormData({
@@ -123,9 +140,18 @@ export function CreateGiveawayForm({
         endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
       });
       setPrizeAmountDisplay("1.00");
+
+      // TODO: Navigate back to giveaways list or show success page
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error) {
       console.error("Error creating giveaway:", error);
-      alert("Failed to create giveaway. Please try again.");
+      alert(
+        `Failed to create giveaway: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     } finally {
       setIsSubmitting(false);
     }

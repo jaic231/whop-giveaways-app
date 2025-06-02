@@ -240,6 +240,8 @@ export function GiveawaysApp({ currentUser }: GiveawaysAppProps) {
           <CreateGiveawayForm
             experienceId={experienceId!}
             companyId={companyId!}
+            currentUser={currentUser}
+            onSuccess={handleGiveawayCreated}
           />
         ) : (
           <GiveawaysList

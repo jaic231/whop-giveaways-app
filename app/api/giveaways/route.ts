@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGiveawaysWithStats } from "@/lib/giveaway-service";
+import { getGiveawaysWithStats, createGiveaway } from "@/lib/giveaway-service";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,6 +25,81 @@ export async function GET(request: NextRequest) {
     console.error("Failed to fetch giveaways:", error);
     return NextResponse.json(
       { error: "Failed to fetch giveaways" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const {
+      title,
+      prizeAmount,
+      startDate,
+      endDate,
+      creatorId,
+      companyId,
+      creatorName,
+    } = body;
+
+    // Validate required fields
+    if (
+      !title ||
+      !prizeAmount ||
+      !startDate ||
+      !endDate ||
+      !creatorId ||
+      !companyId
+    ) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // Validate prize amount is positive
+    if (prizeAmount <= 0) {
+      return NextResponse.json(
+        { error: "Prize amount must be positive" },
+        { status: 400 }
+      );
+    }
+
+    // Convert ISO strings back to Date objects
+    const giveawayData = {
+      title,
+      prizeAmount: Math.round(prizeAmount * 100), // Convert to cents
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+    };
+
+    // Validate dates
+    if (giveawayData.startDate >= giveawayData.endDate) {
+      return NextResponse.json(
+        { error: "End date must be after start date" },
+        { status: 400 }
+      );
+    }
+
+    const giveaway = await createGiveaway(
+      giveawayData,
+      creatorId,
+      companyId,
+      creatorName
+    );
+
+    return NextResponse.json(
+      {
+        giveaway,
+        message: "Giveaway created successfully",
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error("Failed to create giveaway:", error);
+    return NextResponse.json(
+      { error: "Failed to create giveaway" },
       { status: 500 }
     );
   }

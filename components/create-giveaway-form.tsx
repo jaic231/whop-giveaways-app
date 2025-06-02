@@ -49,7 +49,7 @@ export function CreateGiveawayForm({
     try {
       setCompanyBalanceLoading(true);
       setCompanyBalanceError(null);
-      const balance = await getCompanyBalance(experienceId);
+      const balance = await getCompanyBalance(companyId);
       setCompanyBalance(balance);
     } catch (error) {
       console.error("Error fetching company balance:", error);

@@ -121,29 +121,3 @@ export async function processWinnerPayout(
     };
   }
 }
-
-export async function getCompanyBalanceFromExperience(
-  experienceId: string
-): Promise<number> {
-  try {
-    // First get the company ID from the experience
-    const companyResponse = await fetch(
-      `/api/experience/${experienceId}/company`
-    );
-
-    if (!companyResponse.ok) {
-      throw new Error("Failed to fetch company from experience");
-    }
-
-    const { companyId, companyTitle } = await companyResponse.json();
-
-    console.log("companyId", companyId);
-    console.log("companyTitle", companyTitle);
-
-    // Then get the company balance
-    return await getCompanyBalance(companyId);
-  } catch (error) {
-    console.error("Failed to get company balance from experience:", error);
-    return 0;
-  }
-}

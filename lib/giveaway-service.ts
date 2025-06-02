@@ -6,6 +6,22 @@ import type {
 } from "./types";
 import { getTimeRemaining } from "./types";
 
+// Helper function to derive giveaway status from dates
+export function deriveGiveawayStatus(
+  startDate: Date,
+  endDate: Date
+): "UPCOMING" | "ACTIVE" | "COMPLETED" {
+  const now = new Date();
+
+  if (now < startDate) {
+    return "UPCOMING";
+  } else if (now >= startDate && now < endDate) {
+    return "ACTIVE";
+  } else {
+    return "COMPLETED";
+  }
+}
+
 // Giveaway CRUD operations
 export async function createGiveaway(
   data: CreateGiveawayData,
@@ -65,29 +81,29 @@ export async function getGiveawaysByCompanyId(
   });
 }
 
-export async function getGiveawaysByStatus(
-  status: "UPCOMING" | "ACTIVE" | "COMPLETED" | "CANCELLED"
-) {
-  return await prisma.giveaway.findMany({
-    where: { status },
-    include: {
-      entries: true,
-    },
-    orderBy: {
-      startDate: "asc",
-    },
-  });
-}
-
-export async function getGiveawaysByStatusAndCompany(
-  status: "UPCOMING" | "ACTIVE" | "COMPLETED" | "CANCELLED",
+// Get giveaways by derived status
+export async function getGiveawaysByDerivedStatus(
+  status: "UPCOMING" | "ACTIVE" | "COMPLETED",
   companyId: string
-) {
+): Promise<GiveawayWithEntries[]> {
+  const now = new Date();
+  let whereCondition: any = { companyId };
+
+  switch (status) {
+    case "UPCOMING":
+      whereCondition.startDate = { gt: now };
+      break;
+    case "ACTIVE":
+      whereCondition.startDate = { lte: now };
+      whereCondition.endDate = { gt: now };
+      break;
+    case "COMPLETED":
+      whereCondition.endDate = { lte: now };
+      break;
+  }
+
   return await prisma.giveaway.findMany({
-    where: {
-      status,
-      companyId,
-    },
+    where: whereCondition,
     include: {
       entries: true,
     },
@@ -110,6 +126,7 @@ export async function getGiveawaysWithStats(
     hasUserEntered: userId
       ? giveaway.entries.some((entry) => entry.userId === userId)
       : false,
+    status: deriveGiveawayStatus(giveaway.startDate, giveaway.endDate),
   }));
 }
 
@@ -151,17 +168,6 @@ export async function getGiveawayEntries(giveawayId: string) {
   });
 }
 
-// Status management
-export async function updateGiveawayStatus(
-  id: string,
-  status: "UPCOMING" | "ACTIVE" | "COMPLETED" | "CANCELLED"
-) {
-  return await prisma.giveaway.update({
-    where: { id },
-    data: { status },
-  });
-}
-
 // Winner selection
 export async function selectRandomWinner(giveawayId: string) {
   const entries = await getGiveawayEntries(giveawayId);
@@ -180,51 +186,35 @@ export async function selectRandomWinner(giveawayId: string) {
     data: { isWinner: true },
   });
 
-  // Update giveaway status to completed
-  await updateGiveawayStatus(giveawayId, "COMPLETED");
-
   return winnerEntry;
 }
 
-// Auto-update giveaway statuses based on dates
-export async function updateGiveawayStatuses(companyId: string) {
+// Process completed giveaways to select winners
+export async function processCompletedGiveaways(companyId: string) {
   const now = new Date();
 
-  // Update upcoming giveaways to active if start date has passed
-  await prisma.giveaway.updateMany({
+  // Find giveaways that have ended but don't have a winner yet
+  const completedGiveaways = await prisma.giveaway.findMany({
     where: {
       companyId,
-      status: "UPCOMING",
-      startDate: {
-        lte: now,
-      },
-      endDate: {
-        gt: now,
-      },
-    },
-    data: {
-      status: "ACTIVE",
-    },
-  });
-
-  // Update active giveaways to completed if end date has passed
-  const expiredGiveaways = await prisma.giveaway.findMany({
-    where: {
-      companyId,
-      status: "ACTIVE",
       endDate: {
         lte: now,
       },
+      entries: {
+        none: {
+          isWinner: true,
+        },
+      },
+    },
+    include: {
+      entries: true,
     },
   });
 
-  // For each expired giveaway, select a winner if there are entries
-  for (const giveaway of expiredGiveaways) {
-    const entries = await getGiveawayEntries(giveaway.id);
-    if (entries.length > 0) {
+  // For each completed giveaway, select a winner if there are entries
+  for (const giveaway of completedGiveaways) {
+    if (giveaway.entries.length > 0) {
       await selectRandomWinner(giveaway.id);
-    } else {
-      await updateGiveawayStatus(giveaway.id, "COMPLETED");
     }
   }
 }

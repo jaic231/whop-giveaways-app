@@ -14,12 +14,11 @@ datasource db {
 }
 
 model Giveaway {
-  id          String         @id @default(cuid())
+  id          String   @id @default(cuid())
   title       String
   prizeAmount Int // Prize amount in cents (e.g., $10.00 = 1000)
   startDate   DateTime
   endDate     DateTime
-  status      GiveawayStatus @default(UPCOMING)
 
   // Creator information
   creatorId   String // Whop user ID of the creator
@@ -57,11 +56,4 @@ model Entry {
   // Ensure one entry per user per giveaway
   @@unique([userId, giveawayId])
   @@map("entries")
-}
-
-enum GiveawayStatus {
-  UPCOMING // Not started yet
-  ACTIVE // Currently running
-  COMPLETED // Finished, winner selected
-  CANCELLED // Cancelled by creator
 }

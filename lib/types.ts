@@ -1,4 +1,7 @@
-import type { Giveaway, Entry, GiveawayStatus } from "@prisma/client";
+import type { Giveaway, Entry } from "@prisma/client";
+
+// Derived status type (computed from dates)
+export type DerivedGiveawayStatus = "UPCOMING" | "ACTIVE" | "COMPLETED";
 
 // Extended types with relations
 export type GiveawayWithEntries = Giveaway & {
@@ -10,6 +13,7 @@ export type GiveawayWithStats = Giveaway & {
   participantCount: number;
   timeRemaining: number | null; // milliseconds until end, null if ended
   hasUserEntered: boolean; // will be set based on current user
+  status: DerivedGiveawayStatus; // derived from dates
 };
 
 // Form types for creating giveaways
@@ -20,23 +24,25 @@ export interface CreateGiveawayData {
   endDate: Date;
 }
 
-// Utility functions
+// Utility functions based on dates instead of status
 export const isGiveawayActive = (giveaway: Giveaway): boolean => {
   const now = new Date();
   const startDate = new Date(giveaway.startDate);
   const endDate = new Date(giveaway.endDate);
 
-  return giveaway.status === "ACTIVE" && startDate <= now && endDate > now;
+  return startDate <= now && endDate > now;
 };
 
 export const isGiveawayUpcoming = (giveaway: Giveaway): boolean => {
   const now = new Date();
   const startDate = new Date(giveaway.startDate);
-  return giveaway.status === "UPCOMING" && startDate > now;
+  return startDate > now;
 };
 
 export const isGiveawayCompleted = (giveaway: Giveaway): boolean => {
-  return giveaway.status === "COMPLETED";
+  const now = new Date();
+  const endDate = new Date(giveaway.endDate);
+  return endDate <= now;
 };
 
 export const getTimeRemaining = (endDate: Date): number | null => {

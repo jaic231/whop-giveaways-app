@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getGiveawaysWithStats,
-  updateGiveawayStatuses,
-} from "@/lib/giveaway-service";
+import { getGiveawaysWithStats } from "@/lib/giveaway-service";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,9 +14,6 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Update giveaway statuses before fetching (filtered by company)
-    await updateGiveawayStatuses(companyId);
 
     const giveaways = await getGiveawaysWithStats(
       companyId,

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { getCompanyBalance } from "@/lib/payment-service";
+import React, { useState, useEffect } from "react";
+import { getCompanyBalance, getUserBalance } from "@/lib/payment-service";
 import { DateTimePicker } from "./date-time-picker";
 
 interface GiveawayFormData {
   title: string;
-  prizeAmount: number;
+  prizeAmount: string;
   startDate: Date;
   endDate: Date;
 }
@@ -16,6 +16,7 @@ interface GiveawayFormErrors {
   prizeAmount?: string;
   startDate?: string;
   endDate?: string;
+  general?: string;
 }
 
 interface CreateGiveawayFormProps {
@@ -38,7 +39,7 @@ export function CreateGiveawayForm({
 }: CreateGiveawayFormProps) {
   const [formData, setFormData] = useState<GiveawayFormData>({
     title: "",
-    prizeAmount: 1.0,
+    prizeAmount: "1.00",
     startDate: new Date(),
     endDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
   });
@@ -54,6 +55,14 @@ export function CreateGiveawayForm({
     null
   );
 
+  // User balance state
+  const [userBalance, setUserBalance] = useState<number | null>(null);
+  const [userBalanceLoading, setUserBalanceLoading] = useState(false);
+  const [userBalanceError, setUserBalanceError] = useState<string | null>(null);
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
+
   const fetchCompanyBalance = async () => {
     try {
       setCompanyBalanceLoading(true);
@@ -68,9 +77,24 @@ export function CreateGiveawayForm({
     }
   };
 
-  // Fetch company balance when component mounts
+  const fetchUserBalance = async () => {
+    try {
+      setUserBalanceLoading(true);
+      setUserBalanceError(null);
+      const balance = await getUserBalance();
+      setUserBalance(balance);
+    } catch (error) {
+      console.error("Error fetching user balance:", error);
+      setUserBalanceError("Failed to fetch user balance");
+    } finally {
+      setUserBalanceLoading(false);
+    }
+  };
+
+  // Fetch balances when component mounts
   useEffect(() => {
     fetchCompanyBalance();
+    fetchUserBalance();
   }, [experienceId]);
 
   const validateForm = (): boolean => {
@@ -80,13 +104,8 @@ export function CreateGiveawayForm({
       newErrors.title = "Title is required";
     }
 
-    if (formData.prizeAmount <= 0) {
-      newErrors.prizeAmount = "Prize amount must be positive";
-    }
-
-    // // Check if company has sufficient balance
-    if (companyBalance !== null && formData.prizeAmount > companyBalance) {
-      newErrors.prizeAmount = "Prize amount exceeds company balance";
+    if (formData.prizeAmount.trim() === "") {
+      newErrors.prizeAmount = "Prize amount is required";
     }
 
     if (formData.startDate >= formData.endDate) {
@@ -105,56 +124,86 @@ export function CreateGiveawayForm({
     setIsSubmitting(true);
 
     try {
-      const giveawayData = {
-        title: formData.title,
-        prizeAmount: formData.prizeAmount,
-        startDate: formData.startDate.toISOString(),
-        endDate: formData.endDate.toISOString(),
-        creatorId: currentUser.id,
-        companyId,
-        creatorName: currentUser.name || "Temp User",
-      };
+      setIsCreating(true);
+      const balance = companyBalance?.toFixed(2) || "0.00";
+      const balanceNumber = parseFloat(balance) || 0;
+      const prizeAmountNumber = parseFloat(formData.prizeAmount);
 
-      const response = await fetch("/api/giveaways", {
+      // Check if deposit is needed
+      if (prizeAmountNumber > balanceNumber) {
+        await handleDeposit(prizeAmountNumber);
+        return;
+      }
+
+      // Proceed with creating giveaway
+      await createGiveaway();
+    } catch (error) {
+      console.error("Error in create giveaway flow:", error);
+      setErrors({ general: "Failed to process request" });
+    } finally {
+      setIsCreating(false);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeposit = async (prizeAmount: number) => {
+    try {
+      setIsDepositing(true);
+
+      // Create charge on server
+      const response = await fetch("/api/giveaways/deposit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(giveawayData),
+        body: JSON.stringify({
+          userId: currentUser.id, // Using experienceId as userId for now
+          experienceId,
+          amount: prizeAmount.toString(),
+          giveawayTitle: formData.title,
+        }),
       });
-
-      const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to create giveaway");
+        throw new Error("Failed to create deposit charge");
       }
 
-      // Success! Show success message and reset form
-      alert(`${result.message}! Giveaway ID: ${result.giveaway.id}`);
+      const { checkoutUrl } = await response.json();
 
-      // Reset form
-      setFormData({
-        title: "",
-        prizeAmount: 1.0,
-        startDate: new Date(),
-        endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      });
-      setPrizeAmountDisplay("1.00");
-
-      // TODO: Navigate back to giveaways list or show success page
-      if (onSuccess) {
-        onSuccess();
+      if (checkoutUrl) {
+        // Redirect to Whop checkout page
+        window.location.href = checkoutUrl;
+      } else {
+        throw new Error("No checkout URL returned");
       }
     } catch (error) {
-      console.error("Error creating giveaway:", error);
-      alert(
-        `Failed to create giveaway: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    } finally {
-      setIsSubmitting(false);
+      console.error("Deposit error:", error);
+      setErrors({ general: "Failed to process deposit" });
+      setIsDepositing(false);
     }
+  };
+
+  const createGiveaway = async () => {
+    const response = await fetch("/api/giveaways", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: formData.title,
+        startDate: formData.startDate.toISOString(),
+        endDate: formData.endDate.toISOString(),
+        prizeAmount: formData.prizeAmount,
+        experienceId,
+        companyId,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to create giveaway");
+    }
+
+    onSuccess?.();
   };
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,7 +248,7 @@ export function CreateGiveawayForm({
 
     // Update numeric value
     const numericValue = parseFloat(processedValue) || 0;
-    setFormData((prev) => ({ ...prev, prizeAmount: numericValue }));
+    setFormData((prev) => ({ ...prev, prizeAmount: numericValue.toString() }));
 
     // Clear error
     if (errors.prizeAmount) {
@@ -212,11 +261,11 @@ export function CreateGiveawayForm({
     if (prizeAmountDisplay && !isNaN(parseFloat(prizeAmountDisplay))) {
       const formatted = parseFloat(prizeAmountDisplay).toFixed(2);
       setPrizeAmountDisplay(formatted);
-      setFormData((prev) => ({ ...prev, prizeAmount: parseFloat(formatted) }));
+      setFormData((prev) => ({ ...prev, prizeAmount: formatted }));
     } else if (!prizeAmountDisplay) {
       // If empty, set to minimum
       setPrizeAmountDisplay("0.01");
-      setFormData((prev) => ({ ...prev, prizeAmount: 0.01 }));
+      setFormData((prev) => ({ ...prev, prizeAmount: "0.01" }));
     }
   };
 
@@ -245,38 +294,89 @@ export function CreateGiveawayForm({
         Create New Giveaway
       </h2>
 
-      {/* Company Balance Display */}
+      {/* Balance Display */}
       <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">
-          Company Balance
+        <h3 className="text-sm font-medium text-gray-700 mb-3">
+          Account Balances
         </h3>
-        {companyBalanceLoading ? (
-          <div className="flex items-center space-x-2">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-            <span className="text-sm text-gray-600">Loading balance...</span>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Company Balance */}
+          <div className="bg-white p-3 rounded-md border">
+            <h4 className="text-xs font-medium text-gray-600 mb-1">
+              Company Balance
+            </h4>
+            {companyBalanceLoading ? (
+              <div className="flex items-center space-x-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span className="text-sm text-gray-600">Loading...</span>
+              </div>
+            ) : companyBalanceError ? (
+              <div className="flex items-center space-x-2 text-red-600">
+                <svg
+                  className="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="text-xs">Error</span>
+                <button
+                  onClick={fetchCompanyBalance}
+                  className="text-xs text-blue-600 hover:text-blue-700 underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <div className="text-lg font-semibold text-green-600">
+                ${companyBalance?.toFixed(2) || "0.00"}
+              </div>
+            )}
           </div>
-        ) : companyBalanceError ? (
-          <div className="flex items-center space-x-2 text-red-600">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span className="text-sm">{companyBalanceError}</span>
-            <button
-              onClick={fetchCompanyBalance}
-              className="text-xs text-blue-600 hover:text-blue-700 underline"
-            >
-              Retry
-            </button>
+
+          {/* User Balance */}
+          <div className="bg-white p-3 rounded-md border">
+            <h4 className="text-xs font-medium text-gray-600 mb-1">
+              Your Balance
+            </h4>
+            {userBalanceLoading ? (
+              <div className="flex items-center space-x-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span className="text-sm text-gray-600">Loading...</span>
+              </div>
+            ) : userBalanceError ? (
+              <div className="flex items-center space-x-2 text-red-600">
+                <svg
+                  className="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="text-xs">Error</span>
+                <button
+                  onClick={fetchUserBalance}
+                  className="text-xs text-blue-600 hover:text-blue-700 underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <div className="text-lg font-semibold text-blue-600">
+                ${userBalance?.toFixed(2) || "0.00"}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="text-lg font-semibold text-green-600">
-            ${companyBalance?.toFixed(2) || "0.00"}
-          </div>
-        )}
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -362,14 +462,21 @@ export function CreateGiveawayForm({
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={isSubmitting || companyBalanceLoading}
+          disabled={isCreating || isDepositing}
           className={`w-full py-3 px-4 rounded-md font-medium transition-colors ${
-            isSubmitting || companyBalanceLoading
+            isCreating || isDepositing
               ? "bg-gray-400 cursor-not-allowed"
               : "bg-blue-600 hover:bg-blue-700"
           } text-white`}
         >
-          {isSubmitting ? "Creating..." : "Create Giveaway"}
+          {isDepositing
+            ? "Processing Deposit..."
+            : isCreating
+            ? "Creating Giveaway..."
+            : parseFloat(formData.prizeAmount) >
+              parseFloat(companyBalance?.toFixed(2) || "0")
+            ? `Deposit $${formData.prizeAmount} & Create Giveaway`
+            : "Create Giveaway"}
         </button>
       </form>
     </div>

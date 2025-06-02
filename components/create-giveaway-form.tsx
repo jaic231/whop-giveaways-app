@@ -85,9 +85,9 @@ export function CreateGiveawayForm({
     }
 
     // // Check if company has sufficient balance
-    // if (companyBalance !== null && formData.prizeAmount > companyBalance) {
-    //   newErrors.prizeAmount = "Prize amount exceeds company balance";
-    // }
+    if (companyBalance !== null && formData.prizeAmount > companyBalance) {
+      newErrors.prizeAmount = "Prize amount exceeds company balance";
+    }
 
     if (formData.startDate >= formData.endDate) {
       newErrors.endDate = "End date must be after start date";

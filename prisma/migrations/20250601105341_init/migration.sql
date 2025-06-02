@@ -11,7 +11,7 @@ CREATE TABLE "giveaways" (
     "status" "GiveawayStatus" NOT NULL DEFAULT 'UPCOMING',
     "creatorId" TEXT NOT NULL,
     "creatorName" TEXT,
-    "depositChargeId" TEXT NOT NULL,
+    "companyId" TEXT NOT NULL,
     "payoutId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

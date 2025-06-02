@@ -1,82 +1,83 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import type { CreateGiveawayData } from "@/lib/types";
+import { useState, useEffect } from "react";
+import { getCompanyBalance } from "@/lib/payment-service";
 import { DateTimePicker } from "./date-time-picker";
-import { getCompanyBalanceFromExperience } from "@/lib/payment-service";
+
+interface GiveawayFormData {
+  title: string;
+  prizeAmount: number;
+  startDate: Date;
+  endDate: Date;
+}
+
+interface GiveawayFormErrors {
+  title?: string;
+  prizeAmount?: string;
+  startDate?: string;
+  endDate?: string;
+}
 
 interface CreateGiveawayFormProps {
-  creatorId: string;
-  creatorName: string;
-  onSuccess: () => void;
-  onCancel: () => void;
+  experienceId: string;
+  companyId: string;
 }
 
 export function CreateGiveawayForm({
-  creatorId,
-  creatorName,
-  onSuccess,
-  onCancel,
+  experienceId,
+  companyId,
 }: CreateGiveawayFormProps) {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState<CreateGiveawayData>({
+  const [formData, setFormData] = useState<GiveawayFormData>({
     title: "",
-    prizeAmount: 0,
+    prizeAmount: 1.0,
     startDate: new Date(),
     endDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
   });
-  const [prizeAmountDisplay, setPrizeAmountDisplay] = useState(""); // Separate state for display
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [showDepositInfo, setShowDepositInfo] = useState(false);
+
+  const [errors, setErrors] = useState<GiveawayFormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [prizeAmountDisplay, setPrizeAmountDisplay] = useState("1.00"); // Separate display state
 
   // Company balance state
-  const [companyBalance, setCompanyBalance] = useState<number>(0);
-  const [companyBalanceLoading, setCompanyBalanceLoading] = useState(true);
+  const [companyBalance, setCompanyBalance] = useState<number | null>(null);
+  const [companyBalanceLoading, setCompanyBalanceLoading] = useState(false);
   const [companyBalanceError, setCompanyBalanceError] = useState<string | null>(
     null
   );
 
-  // Fetch company balance on component mount
+  const fetchCompanyBalance = async () => {
+    try {
+      setCompanyBalanceLoading(true);
+      setCompanyBalanceError(null);
+      const balance = await getCompanyBalance(experienceId);
+      setCompanyBalance(balance);
+    } catch (error) {
+      console.error("Error fetching company balance:", error);
+      setCompanyBalanceError("Failed to fetch company balance");
+    } finally {
+      setCompanyBalanceLoading(false);
+    }
+  };
+
+  // Fetch company balance when component mounts
   useEffect(() => {
-    const fetchCompanyBalance = async () => {
-      const experienceId = window.location.pathname.split("/")[2];
-
-      try {
-        setCompanyBalanceLoading(true);
-        setCompanyBalanceError(null);
-        const balance = await getCompanyBalanceFromExperience(experienceId);
-        setCompanyBalance(balance);
-      } catch (error) {
-        console.error("Failed to fetch company balance:", error);
-        setCompanyBalanceError("Failed to load company balance");
-        setCompanyBalance(0);
-      } finally {
-        setCompanyBalanceLoading(false);
-      }
-    };
-
     fetchCompanyBalance();
-  }, []);
-
-  // Memoize form validation to prevent infinite re-renders
-  const isFormValid = useMemo(() => {
-    if (!formData.title.trim()) return false;
-    if (formData.prizeAmount <= 0) return false;
-    if (formData.startDate >= formData.endDate) return false;
-    if (formData.startDate < new Date()) return false;
-    return true;
-  }, [formData]);
+  }, [experienceId]);
 
   const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
+    const newErrors: GiveawayFormErrors = {};
 
     if (!formData.title.trim()) {
       newErrors.title = "Title is required";
     }
 
     if (formData.prizeAmount <= 0) {
-      newErrors.prizeAmount = "Prize amount must be greater than $0";
+      newErrors.prizeAmount = "Prize amount must be positive";
+    }
+
+    // Check if company has sufficient balance
+    if (companyBalance !== null && formData.prizeAmount > companyBalance) {
+      newErrors.prizeAmount = "Prize amount exceeds company balance";
     }
 
     if (formData.startDate >= formData.endDate) {
@@ -96,84 +97,88 @@ export function CreateGiveawayForm({
 
     if (!validateForm()) return;
 
-    setLoading(true);
-    setError(null);
+    setIsSubmitting(true);
 
     try {
-      // Create deposit charge first
-      const depositResponse = await fetch("/api/giveaways/deposit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: creatorId,
-          amount: formData.prizeAmount,
-          giveawayTitle: formData.title,
-          experienceId: window.location.pathname.split("/")[2], // Extract from URL
-        }),
+      const giveawayData = {
+        ...formData,
+        startDate: formData.startDate.toISOString(),
+        endDate: formData.endDate.toISOString(),
+        experienceId,
+        companyId,
+      };
+
+      // Store in localStorage for the payment success page
+      localStorage.setItem("pendingGiveaway", JSON.stringify(giveawayData));
+
+      // For now, just redirect to a success page or show success message
+      // TODO: Implement payment flow when needed
+      alert("Giveaway created successfully!");
+
+      // Reset form
+      setFormData({
+        title: "",
+        prizeAmount: 1.0,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
       });
-
-      if (!depositResponse.ok) {
-        const error = await depositResponse.json();
-        throw new Error(error.error || "Failed to create deposit charge");
-      }
-
-      const { checkoutUrl, chargeId } = await depositResponse.json();
-
-      if (!checkoutUrl) {
-        throw new Error("No checkout URL received");
-      }
-
-      // Store giveaway data in localStorage to create after payment
-      localStorage.setItem(
-        "pendingGiveaway",
-        JSON.stringify({
-          title: formData.title,
-          prizeAmount: formData.prizeAmount,
-          startDate: formData.startDate.toISOString(),
-          endDate: formData.endDate.toISOString(),
-          creatorId,
-          creatorName,
-          depositChargeId: chargeId,
-        })
-      );
-
-      // Redirect to Whop checkout
-      window.location.href = checkoutUrl;
+      setPrizeAmountDisplay("1.00");
     } catch (error) {
-      console.error("Failed to create giveaway:", error);
-      setError(
-        error instanceof Error ? error.message : "Failed to create giveaway"
-      );
+      console.error("Error creating giveaway:", error);
+      alert("Failed to create giveaway. Please try again.");
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handlePrizeAmountChange = (value: string) => {
-    // Allow only numbers and one decimal point
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, title: e.target.value }));
+    if (errors.title) {
+      setErrors((prev) => ({ ...prev, title: undefined }));
+    }
+  };
+
+  const handlePrizeAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+
+    // Remove any non-digit, non-decimal characters
     const cleanValue = value.replace(/[^0-9.]/g, "");
 
-    // Prevent multiple decimal points
+    // Handle multiple decimal points - only allow one
     const parts = cleanValue.split(".");
     if (parts.length > 2) {
       return; // Don't update if more than one decimal point
     }
 
-    // Limit to 2 decimal places
-    if (parts[1] && parts[1].length > 2) {
+    // If there's a decimal part, limit to 2 digits
+    if (parts.length === 2 && parts[1].length > 2) {
       return; // Don't update if more than 2 decimal places
     }
 
-    setPrizeAmountDisplay(cleanValue);
+    // Handle edge cases
+    let processedValue = cleanValue;
 
-    // Convert to cents for storage
-    const dollars = parseFloat(cleanValue) || 0;
-    setFormData((prev) => ({
-      ...prev,
-      prizeAmount: Math.round(dollars * 100),
-    }));
+    // Don't allow multiple leading zeros before decimal
+    if (processedValue.match(/^0+[0-9]/)) {
+      processedValue = processedValue.replace(/^0+/, "0");
+    }
+
+    // Don't allow starting with decimal point - prepend 0
+    if (processedValue.startsWith(".")) {
+      processedValue = "0" + processedValue;
+    }
+
+    // Update display value
+    setPrizeAmountDisplay(processedValue);
+
+    // Update numeric value
+    const numericValue = parseFloat(processedValue) || 0;
+    setFormData((prev) => ({ ...prev, prizeAmount: numericValue }));
+
+    // Clear error
+    if (errors.prizeAmount) {
+      setErrors((prev) => ({ ...prev, prizeAmount: undefined }));
+    }
   };
 
   const handlePrizeAmountBlur = () => {
@@ -181,172 +186,166 @@ export function CreateGiveawayForm({
     if (prizeAmountDisplay && !isNaN(parseFloat(prizeAmountDisplay))) {
       const formatted = parseFloat(prizeAmountDisplay).toFixed(2);
       setPrizeAmountDisplay(formatted);
+      setFormData((prev) => ({ ...prev, prizeAmount: parseFloat(formatted) }));
     } else if (!prizeAmountDisplay) {
-      // If empty, set to 0
-      setPrizeAmountDisplay("");
-      setFormData((prev) => ({ ...prev, prizeAmount: 0 }));
+      // If empty, set to minimum
+      setPrizeAmountDisplay("0.01");
+      setFormData((prev) => ({ ...prev, prizeAmount: 0.01 }));
+    }
+  };
+
+  const handlePrizeAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Select all text when focused for easy editing
+    e.target.select();
+  };
+
+  const handleStartDateChange = (date: Date) => {
+    setFormData((prev) => ({ ...prev, startDate: date }));
+    if (errors.startDate) {
+      setErrors((prev) => ({ ...prev, startDate: undefined }));
+    }
+  };
+
+  const handleEndDateChange = (date: Date) => {
+    setFormData((prev) => ({ ...prev, endDate: date }));
+    if (errors.endDate) {
+      setErrors((prev) => ({ ...prev, endDate: undefined }));
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">
-          Create New Giveaway
-        </h2>
+    <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-md">
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">
+        Create New Giveaway
+      </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Title */}
-          <div>
-            <label
-              htmlFor="title"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Giveaway Name *
-            </label>
-            <input
-              type="text"
-              id="title"
-              value={formData.title}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, title: e.target.value }))
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
-              placeholder="Enter giveaway name..."
-            />
-            {errors.title && (
-              <p className="text-red-600 text-sm mt-1">{errors.title}</p>
-            )}
+      {/* Company Balance Display */}
+      <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">
+          Company Balance
+        </h3>
+        {companyBalanceLoading ? (
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            <span className="text-sm text-gray-600">Loading balance...</span>
           </div>
-
-          {/* Prize Amount */}
-          <div>
-            <label
-              htmlFor="prizeAmount"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Prize Amount *
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">$</span>
-              </div>
-              <input
-                type="text"
-                id="prizeAmount"
-                value={prizeAmountDisplay}
-                onChange={(e) => handlePrizeAmountChange(e.target.value)}
-                onBlur={handlePrizeAmountBlur}
-                className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
-                placeholder="0.00"
-                disabled={companyBalanceLoading}
+        ) : companyBalanceError ? (
+          <div className="flex items-center space-x-2 text-red-600">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
               />
-            </div>
-
-            {/* Company Balance */}
-            {companyBalanceLoading ? (
-              <p className="text-sm text-gray-500 mt-1">
-                Loading company balance...
-              </p>
-            ) : companyBalanceError ? (
-              <p className="text-sm text-red-500 mt-1">{companyBalanceError}</p>
-            ) : (
-              <p className="text-sm text-blue-600 mt-1">
-                Company balance: ${(companyBalance / 100).toFixed(2)}
-              </p>
-            )}
-
-            {errors.prizeAmount && (
-              <p className="text-red-600 text-sm mt-1">{errors.prizeAmount}</p>
-            )}
-          </div>
-
-          {/* Start Date */}
-          <DateTimePicker
-            id="startDate"
-            name="startDate"
-            value={formData.startDate}
-            onChange={(date) =>
-              setFormData((prev) => ({ ...prev, startDate: date }))
-            }
-            label="Start Date & Time *"
-            error={errors.startDate}
-            minDate={new Date()}
-            placeholderText="Select when the giveaway starts..."
-          />
-
-          {/* End Date */}
-          <DateTimePicker
-            id="endDate"
-            name="endDate"
-            value={formData.endDate}
-            onChange={(date) =>
-              setFormData((prev) => ({ ...prev, endDate: date }))
-            }
-            label="End Date & Time *"
-            error={errors.endDate}
-            minDate={formData.startDate}
-            placeholderText="Select when the giveaway ends..."
-          />
-
-          {/* Submit Error */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-red-600 text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-4">
+            </svg>
+            <span className="text-sm">{companyBalanceError}</span>
             <button
-              type="button"
-              onClick={onCancel}
-              disabled={loading}
-              className="flex-1 bg-gray-300 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-400 transition-colors font-medium disabled:opacity-50"
+              onClick={fetchCompanyBalance}
+              className="text-xs text-blue-600 hover:text-blue-700 underline"
             >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowDepositInfo(!showDepositInfo)}
-              className="px-4 py-3 text-blue-600 hover:text-blue-700 font-medium"
-              title="Learn about deposits"
-            >
-              ℹ️
-            </button>
-
-            <button
-              type="submit"
-              disabled={loading || !isFormValid || companyBalanceLoading}
-              className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading
-                ? "Processing..."
-                : `Create & Pay Deposit ($${(
-                    formData.prizeAmount / 100
-                  ).toFixed(2)})`}
+              Retry
             </button>
           </div>
-        </form>
-
-        {/* Deposit Info */}
-        {showDepositInfo && (
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 className="font-medium text-blue-900 mb-2">About Deposits</h4>
-            <p className="text-sm text-blue-800 mb-2">
-              To ensure fair giveaways, you must deposit the full prize amount
-              when creating a giveaway.
-            </p>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Your deposit is held securely by Whop</li>
-              <li>• Prize money is automatically paid to the winner</li>
-              <li>• If no one enters, your deposit is refunded</li>
-              <li>• You cannot enter your own giveaway</li>
-            </ul>
+        ) : (
+          <div className="text-lg font-semibold text-green-600">
+            ${companyBalance?.toFixed(2) || "0.00"}
           </div>
         )}
       </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Title */}
+        <div>
+          <label
+            htmlFor="title"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Giveaway Title *
+          </label>
+          <input
+            type="text"
+            id="title"
+            name="title"
+            value={formData.title}
+            onChange={handleTitleChange}
+            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.title ? "border-red-500" : "border-gray-300"
+            }`}
+            placeholder="Enter giveaway title"
+          />
+          {errors.title && (
+            <p className="mt-1 text-sm text-red-600">{errors.title}</p>
+          )}
+        </div>
+
+        {/* Prize Amount */}
+        <div>
+          <label
+            htmlFor="prizeAmount"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Prize Amount *
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <span className="text-gray-500 sm:text-sm">$</span>
+            </div>
+            <input
+              type="text"
+              id="prizeAmount"
+              name="prizeAmount"
+              value={prizeAmountDisplay}
+              onChange={handlePrizeAmountChange}
+              onBlur={handlePrizeAmountBlur}
+              onFocus={handlePrizeAmountFocus}
+              className={`w-full pl-7 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.prizeAmount ? "border-red-500" : "border-gray-300"
+              }`}
+              placeholder="0.00"
+            />
+          </div>
+          {errors.prizeAmount && (
+            <p className="mt-1 text-sm text-red-600">{errors.prizeAmount}</p>
+          )}
+        </div>
+
+        {/* Start Date */}
+        <DateTimePicker
+          id="startDate"
+          name="startDate"
+          value={formData.startDate}
+          onChange={handleStartDateChange}
+          label="Start Date & Time *"
+          error={errors.startDate}
+          minDate={new Date()}
+          placeholderText="Select when the giveaway starts..."
+        />
+
+        {/* End Date */}
+        <DateTimePicker
+          id="endDate"
+          name="endDate"
+          value={formData.endDate}
+          onChange={handleEndDateChange}
+          label="End Date & Time *"
+          error={errors.endDate}
+          minDate={formData.startDate}
+          placeholderText="Select when the giveaway ends..."
+        />
+
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={isSubmitting || companyBalanceLoading}
+          className={`w-full py-3 px-4 rounded-md font-medium transition-colors ${
+            isSubmitting || companyBalanceLoading
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700"
+          } text-white`}
+        >
+          {isSubmitting ? "Creating..." : "Create Giveaway"}
+        </button>
+      </form>
     </div>
   );
 }

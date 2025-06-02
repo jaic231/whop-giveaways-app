@@ -10,7 +10,7 @@ import { getTimeRemaining } from "./types";
 export async function createGiveaway(
   data: CreateGiveawayData,
   creatorId: string,
-  depositChargeId: string,
+  companyId: string,
   creatorName?: string
 ) {
   return await prisma.giveaway.create({
@@ -21,7 +21,7 @@ export async function createGiveaway(
       endDate: data.endDate,
       creatorId,
       creatorName,
-      depositChargeId: depositChargeId,
+      companyId,
     },
     include: {
       entries: true,
@@ -51,6 +51,20 @@ export async function getAllGiveaways(): Promise<GiveawayWithEntries[]> {
   });
 }
 
+export async function getGiveawaysByCompanyId(
+  companyId: string
+): Promise<GiveawayWithEntries[]> {
+  return await prisma.giveaway.findMany({
+    where: { companyId },
+    include: {
+      entries: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+}
+
 export async function getGiveawaysByStatus(
   status: "UPCOMING" | "ACTIVE" | "COMPLETED" | "CANCELLED"
 ) {
@@ -65,10 +79,29 @@ export async function getGiveawaysByStatus(
   });
 }
 
+export async function getGiveawaysByStatusAndCompany(
+  status: "UPCOMING" | "ACTIVE" | "COMPLETED" | "CANCELLED",
+  companyId: string
+) {
+  return await prisma.giveaway.findMany({
+    where: {
+      status,
+      companyId,
+    },
+    include: {
+      entries: true,
+    },
+    orderBy: {
+      startDate: "asc",
+    },
+  });
+}
+
 export async function getGiveawaysWithStats(
+  companyId: string,
   userId?: string
 ): Promise<GiveawayWithStats[]> {
-  const giveaways = await getAllGiveaways();
+  const giveaways = await getGiveawaysByCompanyId(companyId);
 
   return giveaways.map((giveaway) => ({
     ...giveaway,
@@ -154,12 +187,13 @@ export async function selectRandomWinner(giveawayId: string) {
 }
 
 // Auto-update giveaway statuses based on dates
-export async function updateGiveawayStatuses() {
+export async function updateGiveawayStatuses(companyId: string) {
   const now = new Date();
 
   // Update upcoming giveaways to active if start date has passed
   await prisma.giveaway.updateMany({
     where: {
+      companyId,
       status: "UPCOMING",
       startDate: {
         lte: now,
@@ -176,6 +210,7 @@ export async function updateGiveawayStatuses() {
   // Update active giveaways to completed if end date has passed
   const expiredGiveaways = await prisma.giveaway.findMany({
     where: {
+      companyId,
       status: "ACTIVE",
       endDate: {
         lte: now,

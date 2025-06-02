@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { GiveawayCard } from "./giveaway-card";
+import { useCompanyStore } from "@/lib/stores/company-store";
 import type { GiveawayWithStats } from "@/lib/types";
 
 interface CurrentUser {
@@ -22,15 +23,25 @@ export function CustomerGiveawaysView({
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Experience and company info
-  const [experienceId, setExperienceId] = useState<string>("");
-  const [companyId, setCompanyId] = useState<string>("");
-  const [companyInfoLoading, setCompanyInfoLoading] = useState(true);
+  // Use Zustand store for company/experience context
+  const {
+    experienceId,
+    companyId,
+    isLoading: companyLoading,
+    error: companyError,
+    initializeFromUrl,
+  } = useCompanyStore();
 
   const fetchGiveaways = async () => {
+    if (!companyId) return; // Don't fetch without company ID
+
     try {
       setLoading(true);
-      const response = await fetch(`/api/giveaways?userId=${currentUser.id}`);
+      const params = new URLSearchParams();
+      params.append("userId", currentUser.id);
+      params.append("companyId", companyId);
+
+      const response = await fetch(`/api/giveaways?${params.toString()}`);
       if (!response.ok) {
         throw new Error("Failed to fetch giveaways");
       }
@@ -47,37 +58,145 @@ export function CustomerGiveawaysView({
     }
   };
 
-  const fetchExperienceAndCompanyInfo = async () => {
-    try {
-      setCompanyInfoLoading(true);
-
-      // Get experience ID from URL
-      const experienceIdFromUrl = window.location.pathname.split("/")[2];
-      setExperienceId(experienceIdFromUrl);
-
-      // Fetch company ID from experience
-      const response = await fetch(
-        `/api/experience/${experienceIdFromUrl}/company`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setCompanyId(data.companyId);
-      }
-    } catch (error) {
-      console.error("Failed to fetch experience/company info:", error);
-    } finally {
-      setCompanyInfoLoading(false);
-    }
-  };
-
+  // Initialize company context on mount
   useEffect(() => {
-    fetchGiveaways();
-    fetchExperienceAndCompanyInfo();
-  }, [refreshKey]);
+    initializeFromUrl();
+  }, [initializeFromUrl]);
+
+  // Fetch giveaways when company ID becomes available
+  useEffect(() => {
+    if (companyId) {
+      fetchGiveaways();
+    }
+  }, [companyId, refreshKey]);
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
   };
+
+  // Show loading state while initializing company context
+  if (companyLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          {/* Header Skeleton */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between">
+              <div className="space-y-3">
+                <div className="h-8 bg-gray-200 rounded-md w-56 animate-pulse"></div>
+                <div className="h-4 bg-gray-200 rounded-md w-48 animate-pulse"></div>
+                <div className="h-4 bg-gray-200 rounded-md w-36 animate-pulse"></div>
+                <div className="space-y-1 mt-2">
+                  <div className="h-3 bg-gray-200 rounded-md w-32 animate-pulse"></div>
+                  <div className="h-3 bg-gray-200 rounded-md w-28 animate-pulse"></div>
+                </div>
+              </div>
+              <div className="h-10 w-10 bg-gray-200 rounded-md animate-pulse"></div>
+            </div>
+          </div>
+
+          {/* Giveaway Cards Grid Skeleton */}
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                className="bg-white rounded-lg border border-gray-200 overflow-hidden animate-pulse"
+              >
+                {/* Card Header */}
+                <div className="p-6 pb-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-5 bg-gray-200 rounded-full w-16"></div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-200 rounded w-full"></div>
+                    <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                  </div>
+                </div>
+
+                {/* Card Body */}
+                <div className="px-6 pb-4">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="text-center">
+                      <div className="h-4 bg-gray-200 rounded w-full mb-1"></div>
+                      <div className="h-6 bg-gray-200 rounded w-3/4 mx-auto"></div>
+                    </div>
+                    <div className="text-center">
+                      <div className="h-4 bg-gray-200 rounded w-full mb-1"></div>
+                      <div className="h-6 bg-gray-200 rounded w-2/3 mx-auto"></div>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="mb-4">
+                    <div className="flex justify-between text-xs mb-1">
+                      <div className="h-3 bg-gray-200 rounded w-16"></div>
+                      <div className="h-3 bg-gray-200 rounded w-12"></div>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2"></div>
+                  </div>
+                </div>
+
+                {/* Card Footer */}
+                <div className="px-6 pb-6">
+                  <div className="h-10 bg-gray-200 rounded w-full"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Loading Indicator Overlay */}
+          <div className="fixed bottom-8 right-8">
+            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-4 flex items-center space-x-3">
+              <div className="relative">
+                <div className="w-6 h-6 border-2 border-blue-200 rounded-full animate-spin"></div>
+                <div className="absolute inset-0 w-6 h-6 border-2 border-blue-600 rounded-full animate-spin border-t-transparent"></div>
+              </div>
+              <div className="text-sm">
+                <div className="font-medium text-gray-900">Connecting</div>
+                <div className="text-gray-500">Finding your giveaways...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if failed to load company context
+  if (companyError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-6 h-6 text-red-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Failed to Load Context
+          </h3>
+          <p className="text-red-600 mb-4">{companyError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -117,12 +236,8 @@ export function CustomerGiveawaysView({
 
               {/* Experience and Company Info */}
               <div className="text-xs text-gray-400 mt-2 space-y-1">
-                <div>Experience ID: {experienceId || "Loading..."}</div>
-                {companyInfoLoading ? (
-                  <div>Company ID: Loading...</div>
-                ) : (
-                  <div>Company ID: {companyId || "N/A"}</div>
-                )}
+                <div>Experience ID: {experienceId || "N/A"}</div>
+                <div>Company ID: {companyId || "N/A"}</div>
               </div>
             </div>
 

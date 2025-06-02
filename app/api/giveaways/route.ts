@@ -6,13 +6,25 @@ import {
 
 export async function GET(request: NextRequest) {
   try {
-    // Update giveaway statuses before fetching
-    await updateGiveawayStatuses();
-
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
+    const companyId = searchParams.get("companyId");
 
-    const giveaways = await getGiveawaysWithStats(userId || undefined);
+    // Company ID is required for all giveaway queries
+    if (!companyId) {
+      return NextResponse.json(
+        { error: "Company ID is required" },
+        { status: 400 }
+      );
+    }
+
+    // Update giveaway statuses before fetching (filtered by company)
+    await updateGiveawayStatuses(companyId);
+
+    const giveaways = await getGiveawaysWithStats(
+      companyId,
+      userId || undefined
+    );
 
     return NextResponse.json({ giveaways });
   } catch (error) {

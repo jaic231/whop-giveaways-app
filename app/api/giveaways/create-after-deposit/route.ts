@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       endDate,
       creatorId,
       creatorName,
-      depositChargeId,
+      companyId,
     } = body;
 
     // Validation
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       !startDate ||
       !endDate ||
       !creatorId ||
-      !depositChargeId
+      !companyId
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the giveaway with deposit information
+    // Create the giveaway with company information
     const giveaway = await createGiveaway(
       {
         title,
@@ -62,13 +62,13 @@ export async function POST(request: NextRequest) {
         endDate: end,
       },
       creatorId,
-      creatorName,
-      depositChargeId
+      companyId,
+      creatorName
     );
 
     return NextResponse.json({ giveaway });
   } catch (error) {
-    console.error("Failed to create giveaway after deposit:", error);
+    console.error("Failed to create giveaway:", error);
     return NextResponse.json(
       { error: "Failed to create giveaway" },
       { status: 500 }

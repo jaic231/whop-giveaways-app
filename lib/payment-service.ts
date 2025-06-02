@@ -1,4 +1,3 @@
-import { whopApi } from "./whop-api";
 import { prisma } from "./prisma";
 
 export interface DepositResult {
@@ -15,82 +14,39 @@ export interface PayoutResult {
 }
 
 /**
- * Create a charge for giveaway deposit - returns checkout URL for user to complete payment
- */
-export async function createDepositCharge(
-  userId: string,
-  amountInCents: number,
-  giveawayTitle: string,
-  redirectUrl: string
-): Promise<DepositResult> {
-  try {
-    const result = await whopApi.chargeUser({
-      input: {
-        amount: amountInCents,
-        currency: "usd",
-        userId: userId,
-        description: `Giveaway deposit for "${giveawayTitle}" - $${(
-          amountInCents / 100
-        ).toFixed(2)}`,
-        metadata: {
-          type: "giveaway_deposit",
-          amount: amountInCents.toString(),
-          giveawayTitle: giveawayTitle,
-        },
-        redirectUrl: redirectUrl,
-      },
-    });
-
-    return {
-      success: true,
-      chargeId: result.chargeUser?.checkoutSession?.id,
-      checkoutUrl: result.chargeUser?.checkoutSession?.purchaseUrl,
-    };
-  } catch (error) {
-    console.error("Failed to create deposit charge:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
-}
-
-/**
- * Pay out winnings to a user
+ * Pay out winnings to a user via API route
  */
 export async function payoutToWinner(
-  userId: string,
+  winnerId: string,
   amountInCents: number,
   companyId: string,
-  giveawayTitle: string
+  giveawayTitle: string,
+  giveawayId: string
 ): Promise<PayoutResult> {
   try {
-    // Get company ledger account first
-    const ledgerResult = await whopApi.getCompanyLedgerAccount({ companyId });
-
-    if (!ledgerResult.company?.ledgerAccount?.id) {
-      throw new Error("Company ledger account not found");
-    }
-    // Generate unique idempotency key
-    const idempotenceKey = `giveaway_payout_${crypto.randomUUID()}`;
-
-    const result = await whopApi.transferFunds({
-      input: {
-        amount: amountInCents,
-        currency: "usd",
-        destinationId: userId,
-        ledgerAccountId: ledgerResult.company.ledgerAccount.id,
-        transferFee: ledgerResult.company.ledgerAccount.transferFee || 0,
-        idempotenceKey: idempotenceKey,
-        notes: `Giveaway winnings for "${giveawayTitle}" - $${(
-          amountInCents / 100
-        ).toFixed(2)}`,
+    const response = await fetch("/api/giveaways/payout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        winnerId,
+        amountInCents,
+        companyId,
+        giveawayTitle,
+        giveawayId,
+      }),
     });
 
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to process payout");
+    }
+
+    const data = await response.json();
     return {
       success: true,
-      payoutId: result.transferFunds ? idempotenceKey : undefined,
+      payoutId: data.payoutId,
     };
   } catch (error) {
     console.error("Failed to payout to winner:", error);
@@ -106,16 +62,32 @@ export async function payoutToWinner(
  */
 export async function getUserBalance(): Promise<number> {
   try {
-    const result = await whopApi.getUserLedgerAccount();
-    const balanceCaches =
-      result.viewer.user?.ledgerAccount?.balanceCaches?.nodes || [];
-    const totalBalance = balanceCaches.reduce(
-      (sum, cache) => sum + (cache?.balance || 0),
-      0
-    );
-    return totalBalance;
+    const response = await fetch("/api/user/balance");
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch user balance");
+    }
+
+    const data = await response.json();
+    return data.balance || 0;
   } catch (error) {
     console.error("Failed to get user balance:", error);
+    return 0;
+  }
+}
+
+export async function getCompanyBalance(companyId: string): Promise<number> {
+  try {
+    const response = await fetch(`/api/company/${companyId}/balance`);
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch company balance");
+    }
+
+    const data = await response.json();
+    return data.balance || 0;
+  } catch (error) {
+    console.error("Failed to get company balance:", error);
     return 0;
   }
 }
@@ -135,18 +107,9 @@ export async function processWinnerPayout(
       winnerId,
       prizeAmount,
       companyId,
-      giveawayTitle
+      giveawayTitle,
+      giveawayId
     );
-
-    if (payoutResult.success) {
-      // Update giveaway with payout information
-      await prisma.giveaway.update({
-        where: { id: giveawayId },
-        data: {
-          payoutId: payoutResult.payoutId,
-        },
-      });
-    }
 
     return payoutResult;
   } catch (error) {
@@ -156,5 +119,31 @@ export async function processWinnerPayout(
       error:
         error instanceof Error ? error.message : "Failed to process payout",
     };
+  }
+}
+
+export async function getCompanyBalanceFromExperience(
+  experienceId: string
+): Promise<number> {
+  try {
+    // First get the company ID from the experience
+    const companyResponse = await fetch(
+      `/api/experience/${experienceId}/company`
+    );
+
+    if (!companyResponse.ok) {
+      throw new Error("Failed to fetch company from experience");
+    }
+
+    const { companyId, companyTitle } = await companyResponse.json();
+
+    console.log("companyId", companyId);
+    console.log("companyTitle", companyTitle);
+
+    // Then get the company balance
+    return await getCompanyBalance(companyId);
+  } catch (error) {
+    console.error("Failed to get company balance from experience:", error);
+    return 0;
   }
 }

@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import type { CreateGiveawayData } from "@/lib/types";
 import { DateTimePicker } from "./date-time-picker";
-import { getUserBalance } from "@/lib/payment-service";
+import { getCompanyBalanceFromExperience } from "@/lib/payment-service";
 
 interface CreateGiveawayFormProps {
   creatorId: string;
@@ -30,40 +30,43 @@ export function CreateGiveawayForm({
   const [error, setError] = useState<string | null>(null);
   const [showDepositInfo, setShowDepositInfo] = useState(false);
 
-  // User balance state
-  const [whopBalance, setWhopBalance] = useState<number>(0);
-  const [balanceLoading, setBalanceLoading] = useState(true);
-  const [balanceError, setBalanceError] = useState<string | null>(null);
+  // Company balance state
+  const [companyBalance, setCompanyBalance] = useState<number>(0);
+  const [companyBalanceLoading, setCompanyBalanceLoading] = useState(true);
+  const [companyBalanceError, setCompanyBalanceError] = useState<string | null>(
+    null
+  );
 
-  // Fetch user balance on component mount
+  // Fetch company balance on component mount
   useEffect(() => {
-    const fetchBalance = async () => {
+    const fetchCompanyBalance = async () => {
+      const experienceId = window.location.pathname.split("/")[2];
+
       try {
-        setBalanceLoading(true);
-        setBalanceError(null);
-        const balance = await getUserBalance();
-        setWhopBalance(balance);
+        setCompanyBalanceLoading(true);
+        setCompanyBalanceError(null);
+        const balance = await getCompanyBalanceFromExperience(experienceId);
+        setCompanyBalance(balance);
       } catch (error) {
-        console.error("Failed to fetch user balance:", error);
-        setBalanceError("Failed to load balance");
-        setWhopBalance(0); // Fallback to 0
+        console.error("Failed to fetch company balance:", error);
+        setCompanyBalanceError("Failed to load company balance");
+        setCompanyBalance(0);
       } finally {
-        setBalanceLoading(false);
+        setCompanyBalanceLoading(false);
       }
     };
 
-    fetchBalance();
+    fetchCompanyBalance();
   }, []);
 
   // Memoize form validation to prevent infinite re-renders
   const isFormValid = useMemo(() => {
     if (!formData.title.trim()) return false;
     if (formData.prizeAmount <= 0) return false;
-    if (formData.prizeAmount > whopBalance) return false;
     if (formData.startDate >= formData.endDate) return false;
     if (formData.startDate < new Date()) return false;
     return true;
-  }, [formData, whopBalance]);
+  }, [formData]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -74,12 +77,6 @@ export function CreateGiveawayForm({
 
     if (formData.prizeAmount <= 0) {
       newErrors.prizeAmount = "Prize amount must be greater than $0";
-    }
-
-    if (formData.prizeAmount > whopBalance) {
-      newErrors.prizeAmount = `Prize amount cannot exceed your Whop balance of $${(
-        whopBalance / 100
-      ).toFixed(2)}`;
     }
 
     if (formData.startDate >= formData.endDate) {
@@ -242,18 +239,23 @@ export function CreateGiveawayForm({
                 onBlur={handlePrizeAmountBlur}
                 className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
                 placeholder="0.00"
-                disabled={balanceLoading}
+                disabled={companyBalanceLoading}
               />
             </div>
-            {balanceLoading ? (
-              <p className="text-sm text-gray-500 mt-1">Loading balance...</p>
-            ) : balanceError ? (
-              <p className="text-sm text-red-500 mt-1">{balanceError}</p>
-            ) : (
+
+            {/* Company Balance */}
+            {companyBalanceLoading ? (
               <p className="text-sm text-gray-500 mt-1">
-                Available balance: ${(whopBalance / 100).toFixed(2)}
+                Loading company balance...
+              </p>
+            ) : companyBalanceError ? (
+              <p className="text-sm text-red-500 mt-1">{companyBalanceError}</p>
+            ) : (
+              <p className="text-sm text-blue-600 mt-1">
+                Company balance: ${(companyBalance / 100).toFixed(2)}
               </p>
             )}
+
             {errors.prizeAmount && (
               <p className="text-red-600 text-sm mt-1">{errors.prizeAmount}</p>
             )}
@@ -316,7 +318,7 @@ export function CreateGiveawayForm({
 
             <button
               type="submit"
-              disabled={loading || !isFormValid || balanceLoading}
+              disabled={loading || !isFormValid || companyBalanceLoading}
               className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading

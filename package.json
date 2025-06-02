@@ -8,6 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
+    "db:setup": "prisma db push && prisma generate",
+    "db:reset": "prisma db push --force-reset && prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
     "prisma:db:push": "dotenv -e .env.local -- pnpm prisma db push",
     "prisma:generate": "dotenv -e .env.local -- pnpm prisma generate",
     "prisma:migrate:dev": "dotenv -e .env.local -- pnpm prisma migrate dev"

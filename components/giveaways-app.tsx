@@ -22,6 +22,11 @@ export function GiveawaysApp({ currentUser }: GiveawaysAppProps) {
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Experience and company info
+  const [experienceId, setExperienceId] = useState<string>("");
+  const [companyId, setCompanyId] = useState<string>("");
+  const [companyInfoLoading, setCompanyInfoLoading] = useState(true);
+
   const fetchGiveaways = async () => {
     try {
       setLoading(true);
@@ -38,8 +43,32 @@ export function GiveawaysApp({ currentUser }: GiveawaysAppProps) {
     }
   };
 
+  const fetchExperienceAndCompanyInfo = async () => {
+    try {
+      setCompanyInfoLoading(true);
+
+      // Get experience ID from URL
+      const experienceIdFromUrl = window.location.pathname.split("/")[2];
+      setExperienceId(experienceIdFromUrl);
+
+      // Fetch company ID from experience
+      const response = await fetch(
+        `/api/experience/${experienceIdFromUrl}/company`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setCompanyId(data.companyId);
+      }
+    } catch (error) {
+      console.error("Failed to fetch experience/company info:", error);
+    } finally {
+      setCompanyInfoLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchGiveaways();
+    fetchExperienceAndCompanyInfo();
   }, [refreshKey]);
 
   const handleGiveawayCreated = () => {
@@ -65,6 +94,16 @@ export function GiveawaysApp({ currentUser }: GiveawaysAppProps) {
               <p className="text-sm text-gray-500 mt-1">
                 Welcome, {currentUser.name || currentUser.username} (Admin)
               </p>
+
+              {/* Experience and Company Info */}
+              <div className="text-xs text-gray-400 mt-2 space-y-1">
+                <div>Experience ID: {experienceId || "Loading..."}</div>
+                {companyInfoLoading ? (
+                  <div>Company ID: Loading...</div>
+                ) : (
+                  <div>Company ID: {companyId || "N/A"}</div>
+                )}
+              </div>
             </div>
 
             {currentUser.isAdmin && view === "list" && (

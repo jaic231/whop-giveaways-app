@@ -6,14 +6,10 @@ export async function GET() {
     const result = await whopApi.getUserLedgerAccount();
     const balanceCaches =
       result.viewer.user?.ledgerAccount?.balanceCaches?.nodes || [];
-
-    console.log("balanceCaches", balanceCaches);
     const totalBalance = balanceCaches.reduce(
       (sum, cache) => sum + (cache?.balance || 0),
       0
     );
-
-    console.log("totalBalance", totalBalance);
 
     return NextResponse.json({ balance: totalBalance });
   } catch (error) {

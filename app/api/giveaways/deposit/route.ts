@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const floatAmount = parseFloat(amount);
 
     // Create the charge using Whop API
-    const chargeUser = await whopApi.chargeUser({
+    const result = await whopApi.chargeUser({
       input: {
         amount: floatAmount, // Convert to float
         currency: "usd",
@@ -38,19 +38,14 @@ export async function POST(request: NextRequest) {
           experienceId: experienceId,
           giveawayTitle: giveawayTitle || "Giveaway Deposit",
         },
-        redirectUrl: `https://whop.com/experiences/${experienceId}`,
       },
     });
 
-    if (!chargeUser?.chargeUser?.checkoutSession) {
+    if (!result?.chargeUser?.inAppPurchase) {
       throw new Error("Failed to create checkout session");
     }
 
-    return NextResponse.json({
-      checkoutUrl: chargeUser.chargeUser.checkoutSession.purchaseUrl,
-      planId: chargeUser.chargeUser.checkoutSession.planId,
-      message: "Deposit charge created successfully",
-    });
+    return NextResponse.json(result.chargeUser.inAppPurchase);
   } catch (error) {
     console.error("Failed to create deposit charge:", error);
     return NextResponse.json(

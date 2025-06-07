@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { getCompanyBalance, getUserBalance } from "@/lib/payment-service";
 import { DateTimePicker } from "./date-time-picker";
+import { useCallback } from "react";
+import { iframeSdk } from "@/lib/iframe";
 
 interface GiveawayFormData {
   title: string;
@@ -48,54 +49,8 @@ export function CreateGiveawayForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [prizeAmountDisplay, setPrizeAmountDisplay] = useState("1.00"); // Separate display state
 
-  // Company balance state
-  const [companyBalance, setCompanyBalance] = useState<number | null>(null);
-  const [companyBalanceLoading, setCompanyBalanceLoading] = useState(false);
-  const [companyBalanceError, setCompanyBalanceError] = useState<string | null>(
-    null
-  );
-
-  // User balance state
-  const [userBalance, setUserBalance] = useState<number | null>(null);
-  const [userBalanceLoading, setUserBalanceLoading] = useState(false);
-  const [userBalanceError, setUserBalanceError] = useState<string | null>(null);
-
   const [isCreating, setIsCreating] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
-
-  const fetchCompanyBalance = async () => {
-    try {
-      setCompanyBalanceLoading(true);
-      setCompanyBalanceError(null);
-      const balance = await getCompanyBalance(companyId);
-      setCompanyBalance(balance);
-    } catch (error) {
-      console.error("Error fetching company balance:", error);
-      setCompanyBalanceError("Failed to fetch company balance");
-    } finally {
-      setCompanyBalanceLoading(false);
-    }
-  };
-
-  const fetchUserBalance = async () => {
-    try {
-      setUserBalanceLoading(true);
-      setUserBalanceError(null);
-      const balance = await getUserBalance();
-      setUserBalance(balance);
-    } catch (error) {
-      console.error("Error fetching user balance:", error);
-      setUserBalanceError("Failed to fetch user balance");
-    } finally {
-      setUserBalanceLoading(false);
-    }
-  };
-
-  // Fetch balances when component mounts
-  useEffect(() => {
-    fetchCompanyBalance();
-    fetchUserBalance();
-  }, [experienceId]);
 
   const validateForm = (): boolean => {
     const newErrors: GiveawayFormErrors = {};
@@ -125,15 +80,10 @@ export function CreateGiveawayForm({
 
     try {
       setIsCreating(true);
-      const balance = companyBalance?.toFixed(2) || "0.00";
-      const balanceNumber = parseFloat(balance) || 0;
       const prizeAmountNumber = parseFloat(formData.prizeAmount);
 
-      // Check if deposit is needed
-      if (prizeAmountNumber > balanceNumber) {
-        await handleDeposit(prizeAmountNumber);
-        return;
-      }
+      // Always require deposit before creating giveaway
+      await handleDeposit(prizeAmountNumber);
 
       // Proceed with creating giveaway
       await createGiveaway();
@@ -168,13 +118,15 @@ export function CreateGiveawayForm({
         throw new Error("Failed to create deposit charge");
       }
 
-      const { checkoutUrl } = await response.json();
+      const inAppPurchase = await response.json();
 
-      if (checkoutUrl) {
-        // Redirect to Whop checkout page
-        window.location.href = checkoutUrl;
+      // Redirect to Whop checkout page
+      const res = await iframeSdk.inAppPurchase(inAppPurchase);
+
+      if (res.status === "ok") {
+        console.log("Deposit successful");
       } else {
-        throw new Error("No checkout URL returned");
+        throw new Error("Failed to process in-app purchase in iframe");
       }
     } catch (error) {
       console.error("Deposit error:", error);
@@ -196,6 +148,8 @@ export function CreateGiveawayForm({
         prizeAmount: formData.prizeAmount,
         experienceId,
         companyId,
+        creatorId: currentUser.id,
+        creatorName: currentUser.name,
       }),
     });
 
@@ -294,91 +248,6 @@ export function CreateGiveawayForm({
         Create New Giveaway
       </h2>
 
-      {/* Balance Display */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">
-          Account Balances
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Company Balance */}
-          <div className="bg-white p-3 rounded-md border">
-            <h4 className="text-xs font-medium text-gray-600 mb-1">
-              Company Balance
-            </h4>
-            {companyBalanceLoading ? (
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                <span className="text-sm text-gray-600">Loading...</span>
-              </div>
-            ) : companyBalanceError ? (
-              <div className="flex items-center space-x-2 text-red-600">
-                <svg
-                  className="w-4 h-4"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-xs">Error</span>
-                <button
-                  onClick={fetchCompanyBalance}
-                  className="text-xs text-blue-600 hover:text-blue-700 underline"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <div className="text-lg font-semibold text-green-600">
-                ${companyBalance?.toFixed(2) || "0.00"}
-              </div>
-            )}
-          </div>
-
-          {/* User Balance */}
-          <div className="bg-white p-3 rounded-md border">
-            <h4 className="text-xs font-medium text-gray-600 mb-1">
-              Your Balance
-            </h4>
-            {userBalanceLoading ? (
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                <span className="text-sm text-gray-600">Loading...</span>
-              </div>
-            ) : userBalanceError ? (
-              <div className="flex items-center space-x-2 text-red-600">
-                <svg
-                  className="w-4 h-4"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-xs">Error</span>
-                <button
-                  onClick={fetchUserBalance}
-                  className="text-xs text-blue-600 hover:text-blue-700 underline"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <div className="text-lg font-semibold text-blue-600">
-                ${userBalance?.toFixed(2) || "0.00"}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Title */}
         <div>
@@ -394,7 +263,7 @@ export function CreateGiveawayForm({
             name="title"
             value={formData.title}
             onChange={handleTitleChange}
-            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 placeholder-gray-500 ${
               errors.title ? "border-red-500" : "border-gray-300"
             }`}
             placeholder="Enter giveaway title"
@@ -424,7 +293,7 @@ export function CreateGiveawayForm({
               onChange={handlePrizeAmountChange}
               onBlur={handlePrizeAmountBlur}
               onFocus={handlePrizeAmountFocus}
-              className={`w-full pl-7 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              className={`w-full pl-7 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 placeholder-gray-500 ${
                 errors.prizeAmount ? "border-red-500" : "border-gray-300"
               }`}
               placeholder="0.00"
@@ -473,10 +342,7 @@ export function CreateGiveawayForm({
             ? "Processing Deposit..."
             : isCreating
             ? "Creating Giveaway..."
-            : parseFloat(formData.prizeAmount) >
-              parseFloat(companyBalance?.toFixed(2) || "0")
-            ? `Deposit $${formData.prizeAmount} & Create Giveaway`
-            : "Create Giveaway"}
+            : `Deposit $${formData.prizeAmount} & Create Giveaway`}
         </button>
       </form>
     </div>

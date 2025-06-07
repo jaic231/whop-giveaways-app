@@ -22,6 +22,7 @@
     "@vercel/functions": "^2.0.3",
     "@whop-apps/sdk": "0.0.1-canary.116",
     "@whop/api": "^0.0.21",
+    "inngest": "^3.39.0",
     "next": "15.3.2",
     "prisma": "^6.8.2",
     "react": "^18.3.1",

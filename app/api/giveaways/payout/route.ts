@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     const result = await whopApi
       .withCompany(companyId)
       .withUser(userId)
-      .transferFunds({
+      .payUser({
         input: {
           amount: amountInCents,
           currency: "usd",

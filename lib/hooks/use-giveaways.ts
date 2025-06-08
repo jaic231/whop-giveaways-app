@@ -49,7 +49,7 @@ export function useGiveaways(currentUserId: string) {
   };
 
   const activeGiveaways = giveaways.filter((g) => g.status === "ACTIVE");
-  const endedGiveaways = giveaways.filter((g) => g.status === "ENDED");
+  const endedGiveaways = giveaways.filter((g) => g.status === "COMPLETED");
 
   return {
     activeGiveaways,

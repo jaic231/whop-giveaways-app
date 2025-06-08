@@ -30,7 +30,7 @@ export function GiveawayHistoryDialog({
     const userEntry = giveaway.entries.find(
       (entry) => entry.userId === currentUserId
     );
-    if (giveaway.status !== "ENDED") return "Ongoing";
+    if (giveaway.status !== "COMPLETED") return "Ongoing";
     if (!userEntry) return "Not Entered";
     return userEntry.isWinner ? "Won" : "Lost";
   };

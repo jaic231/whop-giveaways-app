@@ -13,6 +13,7 @@ interface DateTimePickerProps {
   error?: string;
   minDate?: Date;
   placeholderText?: string;
+  timeIntervals?: number;
 }
 
 export function DateTimePicker({
@@ -24,6 +25,7 @@ export function DateTimePicker({
   error,
   minDate,
   placeholderText = "Select date and time...",
+  timeIntervals = 15,
 }: DateTimePickerProps) {
   return (
     <div>
@@ -42,7 +44,7 @@ export function DateTimePicker({
         }}
         showTimeSelect
         timeFormat="h:mm aa"
-        timeIntervals={15}
+        timeIntervals={timeIntervals}
         timeCaption="Time"
         dateFormat="MMMM d, yyyy h:mm aa"
         minDate={minDate}

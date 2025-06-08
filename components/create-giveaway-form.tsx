@@ -61,6 +61,8 @@ export function CreateGiveawayForm({
 
     if (formData.prizeAmount.trim() === "") {
       newErrors.prizeAmount = "Prize amount is required";
+    } else if (parseFloat(formData.prizeAmount) < 1) {
+      newErrors.prizeAmount = "Prize amount must be at least $1.00";
     }
 
     if (formData.startDate >= formData.endDate) {
@@ -220,16 +222,15 @@ export function CreateGiveawayForm({
   };
 
   const handlePrizeAmountBlur = () => {
-    // Format properly on blur if there's a value
-    if (prizeAmountDisplay && !isNaN(parseFloat(prizeAmountDisplay))) {
-      const formatted = parseFloat(prizeAmountDisplay).toFixed(2);
-      setPrizeAmountDisplay(formatted);
-      setFormData((prev) => ({ ...prev, prizeAmount: formatted }));
-    } else if (!prizeAmountDisplay) {
-      // If empty, set to minimum
-      setPrizeAmountDisplay("0.01");
-      setFormData((prev) => ({ ...prev, prizeAmount: "0.01" }));
+    let numericValue = parseFloat(prizeAmountDisplay);
+
+    if (isNaN(numericValue) || numericValue < 1) {
+      numericValue = 1;
     }
+
+    const formatted = numericValue.toFixed(2);
+    setPrizeAmountDisplay(formatted);
+    setFormData((prev) => ({ ...prev, prizeAmount: formatted }));
   };
 
   const handlePrizeAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -314,28 +315,32 @@ export function CreateGiveawayForm({
         </div>
 
         {/* Start Date */}
-        <DateTimePicker
-          id="startDate"
-          name="startDate"
-          value={formData.startDate}
-          onChange={handleStartDateChange}
-          label="Start Date & Time *"
-          error={errors.startDate}
-          minDate={new Date()}
-          placeholderText="Select when the giveaway starts..."
-        />
-
-        {/* End Date */}
-        <DateTimePicker
-          id="endDate"
-          name="endDate"
-          value={formData.endDate}
-          onChange={handleEndDateChange}
-          label="End Date & Time *"
-          error={errors.endDate}
-          minDate={formData.startDate}
-          placeholderText="Select when the giveaway ends..."
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <DateTimePicker
+              id="start-date"
+              name="start-date"
+              label="Start Date & Time"
+              value={formData.startDate}
+              onChange={handleStartDateChange}
+              error={errors.startDate}
+              minDate={new Date()}
+              timeIntervals={1}
+            />
+          </div>
+          <div>
+            <DateTimePicker
+              id="end-date"
+              name="end-date"
+              label="End Date & Time"
+              value={formData.endDate}
+              onChange={handleEndDateChange}
+              error={errors.endDate}
+              minDate={formData.startDate}
+              timeIntervals={1}
+            />
+          </div>
+        </div>
 
         {/* Submit Button */}
         <button

@@ -8,6 +8,12 @@ export async function POST(request: NextRequest) {
     const { giveawayId, experienceId, prizeAmount, title, companyId } =
       await request.json();
 
+    console.log("giveawayId", giveawayId);
+    console.log("experienceId", experienceId);
+    console.log("prizeAmount", prizeAmount);
+    console.log("title", title);
+    console.log("companyId", companyId);
+
     if (!giveawayId || !experienceId || !prizeAmount || !companyId) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -15,12 +21,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const giveaway = await prisma.giveaway.findUnique({
+      where: {
+        id: giveawayId,
+      },
+    });
+
+    if (!giveaway) {
+      return NextResponse.json(
+        { error: "Giveaway not found" },
+        { status: 404 }
+      );
+    }
+
+    const userId = giveaway.creatorId;
+
     // Get all entries for this giveaway
     const entries = await prisma.entry.findMany({
       where: {
         giveawayId: giveawayId,
       },
     });
+
+    console.log("entries", entries);
 
     if (entries.length === 0) {
       // Send notification about no entries
@@ -47,9 +70,10 @@ export async function POST(request: NextRequest) {
     );
 
     // Get the company's ledger account ID
-    const companyLedgerAccount = await whopApi.getCompanyLedgerAccount({
-      companyId: companyId,
-    });
+    const companyLedgerAccount = await whopApi
+      .withCompany(companyId)
+      .withUser(userId)
+      .getCompanyLedgerAccount({ companyId });
 
     if (!companyLedgerAccount?.company?.ledgerAccount?.id) {
       console.error("Failed to fetch company ledger account");
@@ -62,17 +86,20 @@ export async function POST(request: NextRequest) {
 
     // Process payment to winner using Whop SDK
     const note = `Giveaway prize for "${title}"`;
-    const paymentResult = await whopApi.payUser({
-      input: {
-        amount: parseFloat(prizeAmount),
-        currency: "usd",
-        destinationId: winnerEntry.userId,
-        idempotenceKey: giveawayId, // Use giveawayId to prevent duplicate payments
-        notes: note.length > 50 ? note.substring(0, 49) : note,
-        reason: "creator_to_user",
-        ledgerAccountId: ledgerAccountId,
-      },
-    });
+    const paymentResult = await whopApi
+      .withCompany(companyId)
+      .withUser(userId)
+      .payUser({
+        input: {
+          amount: parseFloat(prizeAmount),
+          currency: "usd",
+          destinationId: winnerEntry.userId,
+          idempotenceKey: giveawayId, // Use giveawayId to prevent duplicate payments
+          notes: note.length > 50 ? note.substring(0, 49) : note,
+          reason: "creator_to_user",
+          ledgerAccountId: ledgerAccountId,
+        },
+      });
 
     if (!paymentResult.transferFunds) {
       console.error("Whop SDK payment error: Failed to transfer funds");

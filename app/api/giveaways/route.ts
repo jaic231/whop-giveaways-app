@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGiveawaysWithStats, createGiveaway } from "@/lib/giveaway-service";
+import { inngest } from "@/lib/inngest/client";
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
       creatorId,
       companyId,
       creatorName,
+      experienceId,
     } = body;
 
     // Validate required fields
@@ -50,7 +52,8 @@ export async function POST(request: NextRequest) {
       !startDate ||
       !endDate ||
       !creatorId ||
-      !companyId
+      !companyId ||
+      !experienceId
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -89,10 +92,24 @@ export async function POST(request: NextRequest) {
       creatorName
     );
 
+    // Schedule the giveaway lifecycle with Inngest
+    await inngest.send({
+      name: "giveaways/schedule",
+      data: {
+        giveawayId: giveaway.id,
+        title: giveaway.title,
+        startDate: giveaway.startDate.toISOString(),
+        endDate: giveaway.endDate.toISOString(),
+        experienceId: experienceId,
+        prizeAmount: (giveaway.prizeAmount / 100).toFixed(2), // Convert back to dollars
+        companyId: companyId,
+      },
+    });
+
     return NextResponse.json(
       {
         giveaway,
-        message: "Giveaway created successfully",
+        message: "Giveaway created and scheduled successfully",
       },
       { status: 201 }
     );

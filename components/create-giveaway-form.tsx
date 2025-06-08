@@ -65,6 +65,15 @@ export function CreateGiveawayForm({
 
     if (formData.startDate >= formData.endDate) {
       newErrors.endDate = "End date must be after start date";
+    } else {
+      // Check if giveaway duration exceeds 7 days (1 week)
+      const timeDiff =
+        formData.endDate.getTime() - formData.startDate.getTime();
+      const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+
+      if (daysDiff > 7) {
+        newErrors.endDate = "Giveaway duration cannot exceed 7 days";
+      }
     }
 
     setErrors(newErrors);
